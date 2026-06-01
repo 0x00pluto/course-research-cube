@@ -39,3 +39,24 @@ yarn-error.log*
 # typescript
 *.tsbuildinfo
 next-env.d.ts
+
+# IDE/editor
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# caches
+.cache/
+.turbo/
+
+# logs
+logs/
+*.log
+pnpm-debug.log*
+lerna-debug.log*
+
+# local temp files
+tmp/
+temp/
+*.tmp
