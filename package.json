@@ -6,7 +6,11 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "lint": "eslint"
+    "lint": "eslint",
+    "db:migration:new": "node scripts/db-migration-new.mjs",
+    "db:migration:list": "node scripts/db-migration-list.mjs",
+    "db:migration:sync-remote": "node scripts/db-migration-sync-remote.mjs",
+    "db:migrate": "node scripts/db-migrate.mjs"
   },
   "dependencies": {
     "class-variance-authority": "^0.7.1",
