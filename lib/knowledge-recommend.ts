@@ -13,8 +13,11 @@ function matchScore(text: string, keyword: string) {
   return text.toLowerCase().includes(k) ? 1 : 0;
 }
 
-export function recommendByModules(scope: "INTERNAL" | "OPC", modules: FrameworkModule[]): KnowledgeRecommendation[] {
-  const items = sqlAll<{ id: number; category: string; title: string; content: string; source_kind: string }>(
+export async function recommendByModules(
+  scope: "INTERNAL" | "OPC",
+  modules: FrameworkModule[],
+): Promise<KnowledgeRecommendation[]> {
+  const items = await sqlAll<{ id: number; category: string; title: string; content: string; source_kind: string }>(
     "select id,category,title,content,source_kind from knowledge_items where scope=? and review_status='APPROVED'",
     scope,
   );

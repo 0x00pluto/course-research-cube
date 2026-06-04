@@ -86,7 +86,7 @@ export async function updateFrameworkAction(formData: FormData) {
 export async function cloneCourseAction(formData: FormData) {
   const user = await requireUser();
   try {
-    cloneCourseAsNewVersion(user, Number(formData.get("courseId")));
+    await cloneCourseAsNewVersion(user, Number(formData.get("courseId")));
   } catch (error) {
     redirectError(COURSES_MY, error instanceof Error ? error.message : "克隆失败");
   }
@@ -95,25 +95,25 @@ export async function cloneCourseAction(formData: FormData) {
 
 export async function addKnowledgeAction(formData: FormData) {
   const user = await requireUser();
-  addKnowledge(user, formData);
+  await addKnowledge(user, formData);
   redirect("/knowledge/new?ok=1");
 }
 
 export async function reviewKnowledgeAction(formData: FormData) {
   const user = await requireUser();
-  reviewKnowledge(user, Number(formData.get("id")), String(formData.get("status")) as "APPROVED" | "REJECTED");
+  await reviewKnowledge(user, Number(formData.get("id")), String(formData.get("status")) as "APPROVED" | "REJECTED");
   redirect("/knowledge/list?ok=1");
 }
 
 export async function addFeedbackAction(formData: FormData) {
   const user = await requireUser();
-  addFeedback(user, formData);
+  await addFeedback(user, formData);
   redirect(`${FEEDBACK_COLLECT}?ok=1`);
 }
 
 export async function reviewFeedbackAction(formData: FormData) {
   const user = await requireUser();
-  reviewFeedback(user, Number(formData.get("id")), String(formData.get("status")) as "APPROVED" | "REJECTED");
+  await reviewFeedback(user, Number(formData.get("id")), String(formData.get("status")) as "APPROVED" | "REJECTED");
   redirect(`${FEEDBACK_LIST}?ok=1`);
 }
 
@@ -132,13 +132,13 @@ export async function generateReportAction(formData: FormData) {
 
 export async function createShareAction(formData: FormData) {
   const user = await requireUser();
-  const token = createShareLink(user, Number(formData.get("reportId")));
+  const token = await createShareLink(user, Number(formData.get("reportId")));
   redirect(`/share/${token}`);
 }
 
 export async function revokeShareAction(formData: FormData) {
   const user = await requireUser();
-  revokeShareLink(user, Number(formData.get("linkId")));
+  await revokeShareLink(user, Number(formData.get("linkId")));
   redirect(REPORTS_SHARE);
 }
 
@@ -155,13 +155,13 @@ export async function rechargeAction(formData: FormData) {
 
 export async function createGrowthCardAction(formData: FormData) {
   const user = await requireUser();
-  createGrowthCard(user, String(formData.get("content") ?? ""));
+  await createGrowthCard(user, String(formData.get("content") ?? ""));
   redirect("/admin");
 }
 
 export async function createVersionComparisonAction(formData: FormData) {
   const user = await requireUser();
-  createVersionComparison(
+  await createVersionComparison(
     user,
     Number(formData.get("courseId")),
     Number(formData.get("baseVersion")),
@@ -173,7 +173,7 @@ export async function createVersionComparisonAction(formData: FormData) {
 
 export async function createStrategyInsightAction(formData: FormData) {
   const user = await requireUser();
-  upsertStrategyInsight(
+  await upsertStrategyInsight(
     user,
     String(formData.get("scope")) as "INTERNAL" | "OPC",
     String(formData.get("title")),
@@ -186,7 +186,7 @@ export async function createSurveyAction(formData: FormData) {
   const user = await requireUser();
   let token = "";
   try {
-    token = createCourseSurvey(user, Number(formData.get("courseId")));
+    token = await createCourseSurvey(user, Number(formData.get("courseId")));
   } catch (error) {
     redirectError(FEEDBACK_SURVEY, error instanceof Error ? error.message : "创建失败");
   }
@@ -197,7 +197,7 @@ export async function createSurveyAction(formData: FormData) {
 export async function submitSurveyAction(formData: FormData) {
   const token = String(formData.get("token") ?? "");
   try {
-    submitSurveyResponse(token, {
+    await submitSurveyResponse(token, {
       moduleName: String(formData.get("moduleName") ?? "整体"),
       score: Number(formData.get("score") ?? 5),
       content: String(formData.get("content") ?? ""),
@@ -222,20 +222,20 @@ export async function releaseCourseAction(formData: FormData) {
 
 export async function promoteSuggestionAction(formData: FormData) {
   const user = await requireUser();
-  promoteKnowledgeSuggestion(user, Number(formData.get("id")));
+  await promoteKnowledgeSuggestion(user, Number(formData.get("id")));
   redirect("/knowledge/list?ok=1");
 }
 
 export async function dismissSuggestionAction(formData: FormData) {
   const user = await requireUser();
-  dismissKnowledgeSuggestion(user, Number(formData.get("id")));
+  await dismissKnowledgeSuggestion(user, Number(formData.get("id")));
   redirect(`${FEEDBACK_LIST}?ok=1`);
 }
 
 export async function updatePlatformSettingsAction(formData: FormData) {
   const user = await requireUser();
   try {
-    savePlatformSettings(user, {
+    await savePlatformSettings(user, {
       minFeedbackForTrend: Number(formData.get("minFeedbackForTrend")),
       courseDesignCost: Number(formData.get("courseDesignCost")),
       reportGenerateCost: Number(formData.get("reportGenerateCost")),

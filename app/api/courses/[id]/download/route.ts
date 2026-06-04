@@ -16,7 +16,7 @@ export async function GET(req: Request, { params }: { params: Promise<{ id: stri
   }
 
   try {
-    const file = getCourseOutput(user, courseId, type);
+    const file = await getCourseOutput(user, courseId, type);
     return new NextResponse(file.content, {
       headers: {
         "Content-Type": "text/plain; charset=utf-8",

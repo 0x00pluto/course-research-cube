@@ -5,7 +5,7 @@ import { AppPanel, StatCard } from "@/components/app-panel";
 
 export default async function AnalyticsPage() {
   const user = await requireRoles(["MANAGER", "ADMIN"]);
-  const data = getManagementAnalytics(user);
+  const data = await getManagementAnalytics(user);
 
   return (
     <div className="space-y-3">

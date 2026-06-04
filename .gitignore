@@ -60,3 +60,6 @@ lerna-debug.log*
 tmp/
 temp/
 *.tmp
+
+# local libSQL file database
+data/*.sqlite

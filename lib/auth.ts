@@ -6,7 +6,7 @@ import type { SessionUser, UserRole } from "@/lib/types";
 const SESSION_COOKIE = "kymf_session";
 
 export async function signIn(email: string, password: string) {
-  const user = sqlOne<{
+  const user = await sqlOne<{
     id: number;
     name: string;
     email: string;
@@ -19,7 +19,7 @@ export async function signIn(email: string, password: string) {
   }
   const token = createToken();
   const expiresAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString();
-  sqlRun("insert into sessions(user_id, token, expires_at) values (?,?,?)", user.id, token, expiresAt);
+  await sqlRun("insert into sessions(user_id, token, expires_at) values (?,?,?)", user.id, token, expiresAt);
   const cookieStore = await cookies();
   cookieStore.set(SESSION_COOKIE, token, {
     httpOnly: true,
@@ -35,7 +35,7 @@ export async function signOut() {
   const cookieStore = await cookies();
   const token = cookieStore.get(SESSION_COOKIE)?.value;
   if (token) {
-    sqlRun("delete from sessions where token = ?", token);
+    await sqlRun("delete from sessions where token = ?", token);
   }
   cookieStore.delete(SESSION_COOKIE);
 }
@@ -44,7 +44,7 @@ export async function getCurrentUser(): Promise<SessionUser | null> {
   const cookieStore = await cookies();
   const token = cookieStore.get(SESSION_COOKIE)?.value;
   if (!token) return null;
-  const row = sqlOne<SessionUser & { expires_at: string }>(
+  const row = await sqlOne<SessionUser & { expires_at: string }>(
     `select u.id, u.name, u.email, u.role, u.scope, s.expires_at
       from sessions s
       join users u on u.id = s.user_id
@@ -53,7 +53,7 @@ export async function getCurrentUser(): Promise<SessionUser | null> {
   );
   if (!row) return null;
   if (new Date(row.expires_at).getTime() < Date.now()) {
-    sqlRun("delete from sessions where token = ?", token);
+    await sqlRun("delete from sessions where token = ?", token);
     return null;
   }
   return {

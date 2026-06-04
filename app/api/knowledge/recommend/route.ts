@@ -17,6 +17,6 @@ export async function POST(req: Request) {
   if (modules.length === 0) {
     return NextResponse.json({ recommendations: [] });
   }
-  const recommendations = recommendByModules(scope, modules);
+  const recommendations = await recommendByModules(scope, modules);
   return NextResponse.json({ recommendations });
 }

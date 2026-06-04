@@ -11,7 +11,9 @@ export default async function KnowledgeNewPage({
   const params = await searchParams;
   const user = await requireUser();
   const canReview = user.role === "MANAGER" || user.role === "ADMIN";
-  const suggestions = canReview ? listKnowledgeSuggestions(user).filter((s) => (s as { status: string }).status === "PENDING") : [];
+  const suggestions = canReview
+    ? (await listKnowledgeSuggestions(user)).filter((s) => (s as { status: string }).status === "PENDING")
+    : [];
 
   return (
     <div className="space-y-3">

@@ -1,4 +1,5 @@
 import { sqlAll } from "@/lib/db";
+import { getKnowledgeGapsForCourse, type KnowledgeGap } from "@/lib/knowledge-gap";
 import { getPlatformSettings, getUserPoints, listCourses } from "@/lib/services";
 import type { SessionUser, TenantScope } from "@/lib/types";
 
@@ -22,33 +23,55 @@ export type CourseOutputRow = {
 };
 
 export async function loadCoursesWorkspace(user: SessionUser) {
-  const courses = listCourses(user);
+  const courses = await listCourses(user);
   const scope: TenantScope = user.role === "OPC" ? "OPC" : "INTERNAL";
-  const platformSettings = getPlatformSettings();
+  const platformSettings = await getPlatformSettings();
   const courseIds = courses.map((c) => c.id);
 
   const details =
     courseIds.length > 0
-      ? sqlAll<CourseDetailRow>(
+      ? await sqlAll<CourseDetailRow>(
           `select id,framework,framework_modules,core_problem,scope,status from courses where id in (${courseIds.join(",")})`,
         )
       : [];
 
   const outputs =
     courseIds.length > 0
-      ? sqlAll<CourseOutputRow>(
+      ? await sqlAll<CourseOutputRow>(
           `select course_id,outline,workbook,deck_package,source_kind,risk_notice,section_sources from course_outputs where course_id in (${courseIds.join(",")})`,
         )
       : [];
 
+  const detailMap = new Map(details.map((d) => [d.id, d]));
+  const outputMap = new Map(outputs.map((o) => [o.course_id, o]));
+  const gapsMap = new Map<number, KnowledgeGap[]>();
+
+  for (const course of courses) {
+    const detail = detailMap.get(course.id);
+    const output = outputMap.get(course.id);
+    if (detail && output) {
+      gapsMap.set(
+        course.id,
+        await getKnowledgeGapsForCourse(
+          course.id,
+          detail.scope,
+          detail.framework,
+          detail.framework_modules,
+          detail.core_problem,
+        ),
+      );
+    }
+  }
+
   const isOpc = user.role === "OPC";
-  const opcPoints = isOpc ? getUserPoints(user.id) : 0;
+  const opcPoints = isOpc ? await getUserPoints(user.id) : 0;
   const canEdit = user.role === "INTERNAL" || user.role === "OPC" || user.role === "ADMIN";
 
   return {
     courses,
-    detailMap: new Map(details.map((d) => [d.id, d])),
-    outputMap: new Map(outputs.map((o) => [o.course_id, o])),
+    detailMap,
+    outputMap,
+    gapsMap,
     scope,
     platformSettings,
     isOpc,

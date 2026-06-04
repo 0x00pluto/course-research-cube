@@ -14,8 +14,8 @@ export default async function KnowledgeSearchPage({
   const query = params.q ?? "";
   const category = params.category ?? "ALL";
   const hasQuery = query.trim().length > 0 || category !== "ALL";
-  const items = hasQuery ? listKnowledgeItems(user, query, category) : [];
-  const allItems = listKnowledgeItems(user, "", "ALL");
+  const items = hasQuery ? await listKnowledgeItems(user, query, category) : [];
+  const allItems = await listKnowledgeItems(user, "", "ALL");
 
   return (
     <div className="space-y-3">

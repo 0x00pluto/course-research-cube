@@ -11,7 +11,7 @@ export default async function KnowledgeListPage({
   const params = await searchParams;
   const user = await requireUser();
   const canReview = user.role === "MANAGER" || user.role === "ADMIN";
-  const items = listKnowledgeItems(user, "", "ALL");
+  const items = await listKnowledgeItems(user, "", "ALL");
   const pending = items.filter((x) => String((x as { review_status: string }).review_status) === "PENDING");
 
   return (

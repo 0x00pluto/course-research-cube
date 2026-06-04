@@ -11,9 +11,9 @@ export default async function OpcPage({
 }) {
   const params = await searchParams;
   const user = await requireRoles(["OPC", "ADMIN"]);
-  const data = listDashboardData(user);
-  const opcPoints = getUserPoints(user.role === "OPC" ? user.id : user.id);
-  const settings = getPlatformSettings();
+  const data = await listDashboardData(user);
+  const opcPoints = await getUserPoints(user.role === "OPC" ? user.id : user.id);
+  const settings = await getPlatformSettings();
 
   return (
     <div className="space-y-3">

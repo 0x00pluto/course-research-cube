@@ -1,6 +1,6 @@
 # 课研魔方 · Keyan Cube
 
-企业培训课程设计与质量分析平台（Next.js 全栈 + SQLite）。
+企业培训课程设计与质量分析平台（Next.js 全栈 + Turso / libSQL）。
 
 ## 能做什么
 
@@ -16,12 +16,31 @@
 
 ```bash
 pnpm install
+cp .env.example .env.local   # 可选：连接 Turso 云端时填写
 pnpm dev
 ```
 
 浏览器打开 [http://localhost:3000](http://localhost:3000)，从首页或 `/login` 登录。
 
-首次启动会自动执行数据库迁移，并在空库时写入演示数据（`data/app.sqlite`）。
+**本地默认**：不配置环境变量时使用 `file:data/app.sqlite`。首次启动会自动迁移，并在开发环境下为空库写入演示数据。
+
+**连接 Turso 云端**：在 `.env.local` 中设置官方变量后执行迁移并启动：
+
+```bash
+# TURSO_DATABASE_URL=libsql://...
+# TURSO_AUTH_TOKEN=...
+pnpm db:migrate
+pnpm dev
+```
+
+创建 Turso 库（需安装 [Turso CLI](https://docs.turso.tech/cli)）：
+
+```bash
+turso auth login
+turso db create keyan-cube
+turso db show keyan-cube --url
+turso db tokens create keyan-cube
+```
 
 ## 演示账号
 
@@ -43,11 +62,12 @@ pnpm dev
 
 ## 重置演示数据
 
-删除本地库后重启开发服务即可重新种子化：
+删除本地库后执行迁移与种子（或使用 `pnpm dev` 在开发环境下自动种子化）：
 
 ```bash
 rm -f data/app.sqlite
-pnpm dev
+pnpm db:migrate
+pnpm db:seed
 ```
 
 ## 常用命令
@@ -56,8 +76,9 @@ pnpm dev
 |------|------|
 | `pnpm dev` | 开发服务 |
 | `pnpm build` / `pnpm start` | 构建与生产运行 |
-| `pnpm db:migrate` | 手动执行迁移（一般不必，启动时已自动迁移） |
+| `pnpm db:migrate` | 对当前 `TURSO_*` 目标执行迁移（本地 file 或远程 libsql） |
+| `pnpm db:seed` | 写入演示账号与 OPC 示例数据（用户表为空才写基础种子；依赖 `npx tsx`） |
 
 ## 技术栈
 
-Next.js 16 · React 19 · TypeScript · SQLite（`node:sqlite`）
+Next.js 16 · React 19 · TypeScript · Turso（`@libsql/client`，`TURSO_DATABASE_URL` / `TURSO_AUTH_TOKEN`）

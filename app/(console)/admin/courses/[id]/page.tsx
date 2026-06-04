@@ -17,11 +17,11 @@ export default async function AdminCourseDetailPage(props: Props) {
   if (!Number.isFinite(courseId)) notFound();
 
   const user = await requireRoles(["ADMIN", "MANAGER"]);
-  const detail = getCourseDetailForAdmin(user, courseId);
+  const detail = await getCourseDetailForAdmin(user, courseId);
   if (!detail) notFound();
 
   const { course, output, sectionSources, feedbacks, reports, shareLinks } = detail;
-  const settings = getPlatformSettings();
+  const settings = await getPlatformSettings();
 
   return (
     <div className="space-y-3">

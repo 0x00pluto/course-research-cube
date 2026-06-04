@@ -23,7 +23,7 @@ export default async function SharePage(props: Props) {
     );
   }
 
-  const report = getShareReport(token);
+  const report = await getShareReport(token);
   if (!report) {
     return (
       <main className="mx-auto min-h-screen w-full max-w-3xl px-6 py-10">

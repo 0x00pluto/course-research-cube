@@ -10,7 +10,7 @@ export default async function CoursesMyPage({
 }) {
   const params = await searchParams;
   const user = await requireUser();
-  const { courses, detailMap, outputMap, canEdit } = await loadCoursesWorkspace(user);
+  const { courses, detailMap, outputMap, gapsMap, canEdit } = await loadCoursesWorkspace(user);
 
   const successMsg = params.saved
     ? "框架已保存，输出物已重新生成。"
@@ -30,7 +30,7 @@ export default async function CoursesMyPage({
       ) : null}
 
       <AppPanel description="编辑框架、查看/下载输出物、基于旧版迭代。">
-        <CourseMyList courses={courses} detailMap={detailMap} outputMap={outputMap} canEdit={canEdit} />
+        <CourseMyList courses={courses} detailMap={detailMap} outputMap={outputMap} gapsMap={gapsMap} canEdit={canEdit} />
       </AppPanel>
     </div>
   );

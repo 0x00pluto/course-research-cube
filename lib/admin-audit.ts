@@ -1,7 +1,7 @@
 import { sqlAll, sqlRun } from "@/lib/db";
 import type { SessionUser } from "@/lib/types";
 
-export function logAdminAudit(
+export async function logAdminAudit(
   user: SessionUser,
   action: string,
   targetType: string,
@@ -9,7 +9,7 @@ export function logAdminAudit(
   detail?: string,
 ) {
   if (user.role !== "ADMIN" && user.role !== "MANAGER") return;
-  sqlRun(
+  await sqlRun(
     "insert into admin_audit_logs(user_id,user_name,action,target_type,target_id,detail) values (?,?,?,?,?,?)",
     user.id,
     user.name,
@@ -20,7 +20,7 @@ export function logAdminAudit(
   );
 }
 
-export function listAdminAuditLogs(limit = 50) {
+export async function listAdminAuditLogs(limit = 50) {
   return sqlAll<{
     id: number;
     user_name: string;

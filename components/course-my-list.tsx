@@ -2,7 +2,7 @@ import Link from "next/link";
 import { cloneCourseAction, releaseCourseAction, updateFrameworkAction } from "@/app/actions";
 import type { CourseDetailRow, CourseOutputRow } from "@/lib/courses-workspace";
 import { parseModulesJson } from "@/lib/framework";
-import { getKnowledgeGapsForCourse } from "@/lib/knowledge-gap";
+import type { KnowledgeGap } from "@/lib/knowledge-gap";
 import { parseSectionSources } from "@/lib/output-sources";
 import type { CourseSummary } from "@/lib/types";
 import { formatCourseStatus, formatScope, formatSourceKind } from "@/lib/display-labels";
@@ -13,11 +13,13 @@ export function CourseMyList({
   courses,
   detailMap,
   outputMap,
+  gapsMap,
   canEdit,
 }: {
   courses: CourseSummary[];
   detailMap: Map<number, CourseDetailRow>;
   outputMap: Map<number, CourseOutputRow>;
+  gapsMap: Map<number, KnowledgeGap[]>;
   canEdit: boolean;
 }) {
   if (courses.length === 0) {
@@ -38,16 +40,7 @@ export function CourseMyList({
         const detail = detailMap.get(course.id);
         const output = outputMap.get(course.id);
         const modules = detail ? parseModulesJson(detail.framework_modules, detail.framework) : [];
-        const gaps =
-          detail && output
-            ? getKnowledgeGapsForCourse(
-                course.id,
-                detail.scope,
-                detail.framework,
-                detail.framework_modules,
-                detail.core_problem,
-              )
-            : [];
+        const gaps = gapsMap.get(course.id) ?? [];
 
         return (
           <div key={course.id} className="rounded-md border border-[#eef0f3] p-4">

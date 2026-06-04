@@ -8,12 +8,12 @@ export interface KnowledgeGap {
   reason: string;
 }
 
-export function analyzeKnowledgeGaps(
+export async function analyzeKnowledgeGaps(
   scope: "INTERNAL" | "OPC",
   frameworkModules: FrameworkModule[],
   coreProblem: string,
-): KnowledgeGap[] {
-  const approved = sqlAll<{ category: string; title: string; content: string }>(
+): Promise<KnowledgeGap[]> {
+  const approved = await sqlAll<{ category: string; title: string; content: string }>(
     "select category,title,content from knowledge_items where scope=? and review_status='APPROVED'",
     scope,
   );
@@ -52,13 +52,13 @@ export function analyzeKnowledgeGaps(
   return gaps;
 }
 
-export function getKnowledgeGapsForCourse(
+export async function getKnowledgeGapsForCourse(
   courseId: number,
   scope: "INTERNAL" | "OPC",
   frameworkText: string,
   frameworkModulesRaw: string | null,
   coreProblem: string,
-): KnowledgeGap[] {
+): Promise<KnowledgeGap[]> {
   const modules = parseModulesJson(frameworkModulesRaw, frameworkText);
   return analyzeKnowledgeGaps(scope, modules, coreProblem);
 }

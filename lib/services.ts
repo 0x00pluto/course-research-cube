@@ -53,23 +53,23 @@ function ensureScope(conditionUser: SessionUser, targetScope: "INTERNAL" | "OPC"
   }
 }
 
-export function listCourses(user: SessionUser): CourseSummary[] {
+export async function listCourses(user: SessionUser): Promise<CourseSummary[]> {
   if (user.role === "ADMIN") {
-    return sqlAll<CourseSummary>(
+    return await sqlAll<CourseSummary>(
       `select c.id,c.title,c.course_type as courseType,c.learner_type as learnerType,c.core_problem as coreProblem,
        u.name as ownerName,u.role as ownerRole,c.scope,c.version,c.status,c.created_at as createdAt
        from courses c join users u on u.id = c.owner_id order by c.id desc`,
     );
   }
   if (user.role === "MANAGER") {
-    return sqlAll<CourseSummary>(
+    return await sqlAll<CourseSummary>(
       `select c.id,c.title,c.course_type as courseType,c.learner_type as learnerType,c.core_problem as coreProblem,
        u.name as ownerName,u.role as ownerRole,c.scope,c.version,c.status,c.created_at as createdAt
        from courses c join users u on u.id = c.owner_id where c.scope = ? order by c.id desc`,
       "INTERNAL",
     );
   }
-  return sqlAll<CourseSummary>(
+  return await sqlAll<CourseSummary>(
     `select c.id,c.title,c.course_type as courseType,c.learner_type as learnerType,c.core_problem as coreProblem,
      u.name as ownerName,u.role as ownerRole,c.scope,c.version,c.status,c.created_at as createdAt
      from courses c join users u on u.id = c.owner_id where c.owner_id = ? order by c.id desc`,
@@ -77,22 +77,23 @@ export function listCourses(user: SessionUser): CourseSummary[] {
   );
 }
 
-export function getUserPoints(userId: number): number {
-  return sqlOne<{ points: number }>("select points from users where id = ?", userId)?.points ?? 0;
+export async function getUserPoints(userId: number): Promise<number> {
+  const row = await sqlOne<{ points: number }>("select points from users where id = ?", userId);
+  return row?.points ?? 0;
 }
 
-export function assertOpcCanAfford(user: SessionUser, action: "COURSE_DESIGN_START" | "REPORT_GENERATE") {
+export async function assertOpcCanAfford(user: SessionUser, action: "COURSE_DESIGN_START" | "REPORT_GENERATE") {
   if (user.role !== "OPC") return;
-  const settings = getPlatformSettings();
+  const settings = await getPlatformSettings();
   const cost = action === "COURSE_DESIGN_START" ? settings.courseDesignCost : settings.reportGenerateCost;
-  const points = getUserPoints(user.id);
+  const points = await getUserPoints(user.id);
   if (points < cost) {
     throw new Error(`积分不足：当前 ${points} 积分，需要 ${cost} 积分，请充值后再继续`);
   }
 }
 
-function ensureCourseAccess(user: SessionUser, courseId: number) {
-  const course = sqlOne<{ owner_id: number; scope: "INTERNAL" | "OPC" }>(
+async function ensureCourseAccess(user: SessionUser, courseId: number) {
+  const course = await sqlOne<{ owner_id: number; scope: "INTERNAL" | "OPC" }>(
     "select owner_id,scope from courses where id=?",
     courseId,
   );
@@ -105,11 +106,11 @@ function ensureCourseAccess(user: SessionUser, courseId: number) {
 
 export async function createCourseDesign(user: SessionUser, formData: FormData) {
   const scope = user.role === "OPC" ? "OPC" : "INTERNAL";
-  assertOpcCanAfford(user, "COURSE_DESIGN_START");
+  await assertOpcCanAfford(user, "COURSE_DESIGN_START");
   if (user.role === "OPC") {
-    const { courseDesignCost } = getPlatformSettings();
+    const { courseDesignCost } = await getPlatformSettings();
     await mockPaymentGateway("COURSE_DESIGN_START");
-    deductPoints(user.id, "COURSE_DESIGN_START", -courseDesignCost, "点击开始课程设计扣费");
+    await deductPoints(user.id, "COURSE_DESIGN_START", -courseDesignCost, "点击开始课程设计扣费");
   }
   const title = String(formData.get("title") ?? "未命名课程");
   const courseType = String(formData.get("courseType") ?? "半天公开课");
@@ -145,15 +146,15 @@ export async function createCourseDesign(user: SessionUser, formData: FormData) 
 
   const modules = parseFramework(framework);
   const modulesJson = JSON.stringify(modules);
-  const gaps = analyzeKnowledgeGaps(scope, modules, coreProblem);
+  const gaps = await analyzeKnowledgeGaps(scope, modules, coreProblem);
   const sectionSources = buildSectionSources(modules, gaps, gaps.length === 0);
   const courseStatus = hasBlockingSources(sectionSources, gaps) ? "BLOCKED" : "READY";
   const riskNotice = hasBlockingSources(sectionSources, gaps)
     ? `存在 ${gaps.length} 项知识缺口，交付前请补充案例与技巧或确认风险后发布。`
     : outputs.riskNotice;
 
-  withTx(() => {
-    const inserted = sqlRun(
+  await withTx(async () => {
+    const inserted = await sqlRun(
       `insert into courses(owner_id,scope,title,course_type,learner_type,core_problem,market_info,user_insight,product_embedding,trainer_tips,framework,framework_modules,design_started_at,status)
        values (?,?,?,?,?,?,?,?,?,?,?,?,datetime('now'),?)`,
       user.id,
@@ -171,7 +172,7 @@ export async function createCourseDesign(user: SessionUser, formData: FormData) 
       courseStatus,
     );
     const courseId = Number(inserted.lastInsertRowid);
-    sqlRun(
+    await sqlRun(
       "insert into course_outputs(course_id,outline,workbook,deck_package,source_kind,risk_notice,section_sources) values (?,?,?,?,?,?,?)",
       courseId,
       outputs.outline,
@@ -189,9 +190,9 @@ export async function createCourseDesign(user: SessionUser, formData: FormData) 
 }
 
 export async function updateCourseFramework(user: SessionUser, courseId: number, modules: FrameworkModule[]) {
-  const course = ensureCourseAccess(user, courseId);
+  const course = await ensureCourseAccess(user, courseId);
   if (user.role === "MANAGER") throw new Error("管理层不可编辑课程");
-  const full = sqlOne<{
+  const full = await sqlOne<{
     title: string;
     learner_type: string;
     core_problem: string;
@@ -220,22 +221,22 @@ export async function updateCourseFramework(user: SessionUser, courseId: number,
     framework,
   );
 
-  const gaps = analyzeKnowledgeGaps(full.scope, modules, full.core_problem);
+  const gaps = await analyzeKnowledgeGaps(full.scope, modules, full.core_problem);
   const sectionSources = buildSectionSources(modules, gaps, gaps.length === 0);
   const courseStatus = hasBlockingSources(sectionSources, gaps) ? "BLOCKED" : "READY";
   const riskNotice = hasBlockingSources(sectionSources, gaps)
     ? `存在 ${gaps.length} 项知识缺口，交付前请补充。`
     : outputs.riskNotice;
 
-  withTx(() => {
-    sqlRun(
+  await withTx(async () => {
+    await sqlRun(
       "update courses set framework=?,framework_modules=?,status=?,updated_at=datetime('now') where id=?",
       framework,
       JSON.stringify(modules),
       courseStatus,
       courseId,
     );
-    sqlRun(
+    await sqlRun(
       "update course_outputs set outline=?,workbook=?,deck_package=?,source_kind='MANUAL',risk_notice=?,section_sources=? where course_id=?",
       outputs.outline,
       outputs.workbook,
@@ -251,11 +252,11 @@ export async function updateCourseFramework(user: SessionUser, courseId: number,
   return course;
 }
 
-export function cloneCourseAsNewVersion(user: SessionUser, courseId: number) {
-  ensureCourseAccess(user, courseId);
+export async function cloneCourseAsNewVersion(user: SessionUser, courseId: number) {
+  await ensureCourseAccess(user, courseId);
   if (user.role === "MANAGER") throw new Error("管理层不可克隆课程");
 
-  const source = sqlOne<{
+  const source = await sqlOne<{
     title: string;
     course_type: string;
     learner_type: string;
@@ -274,7 +275,7 @@ export function cloneCourseAsNewVersion(user: SessionUser, courseId: number) {
   );
   if (!source) throw new Error("课程不存在");
 
-  const output = sqlOne<{ outline: string; workbook: string; deck_package: string; risk_notice: string }>(
+  const output = await sqlOne<{ outline: string; workbook: string; deck_package: string; risk_notice: string }>(
     "select outline,workbook,deck_package,risk_notice from course_outputs where course_id=?",
     courseId,
   );
@@ -282,8 +283,8 @@ export function cloneCourseAsNewVersion(user: SessionUser, courseId: number) {
   const newVersion = source.version + 1;
   const newTitle = `${source.title}（v${newVersion}）`;
 
-  withTx(() => {
-    const inserted = sqlRun(
+  await withTx(async () => {
+    const inserted = await sqlRun(
       `insert into courses(owner_id,scope,title,course_type,learner_type,core_problem,market_info,user_insight,product_embedding,trainer_tips,framework,framework_modules,version,parent_course_id,status)
        values (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
       user.id,
@@ -304,7 +305,7 @@ export function cloneCourseAsNewVersion(user: SessionUser, courseId: number) {
     );
     const newId = Number(inserted.lastInsertRowid);
     if (output) {
-      sqlRun(
+      await sqlRun(
         "insert into course_outputs(course_id,outline,workbook,deck_package,source_kind,risk_notice) values (?,?,?,?,?,?)",
         newId,
         output.outline,
@@ -319,7 +320,7 @@ export function cloneCourseAsNewVersion(user: SessionUser, courseId: number) {
   revalidateCoursesPages();
 }
 
-export function listKnowledgeItems(user: SessionUser, query: string, category?: string): KnowledgeItemRow[] {
+export async function listKnowledgeItems(user: SessionUser, query: string, category?: string): Promise<KnowledgeItemRow[]> {
   const scope = user.role === "ADMIN" ? null : user.scope;
   let sql = "select * from knowledge_items where 1=1";
   const params: (string | number)[] = [];
@@ -337,10 +338,10 @@ export function listKnowledgeItems(user: SessionUser, query: string, category?: 
     params.push(like, like);
   }
   sql += " order by updated_at desc, id desc";
-  return sqlAll<KnowledgeItemRow>(sql, ...params);
+  return await sqlAll<KnowledgeItemRow>(sql, ...params);
 }
 
-export function searchKnowledgeItems(user: SessionUser, query: string, category?: string) {
+export async function searchKnowledgeItems(user: SessionUser, query: string, category?: string) {
   const scope = user.role === "ADMIN" ? null : user.scope;
   let sql = "select * from knowledge_items where review_status='APPROVED'";
   const params: (string | number)[] = [];
@@ -358,14 +359,14 @@ export function searchKnowledgeItems(user: SessionUser, query: string, category?
     params.push(like, like);
   }
   sql += " order by updated_at desc, id desc";
-  return sqlAll(sql, ...params);
+  return await sqlAll(sql, ...params);
 }
 
-export function getModuleFeedbackAnalysis(user: SessionUser, courseId?: number) {
-  if (courseId) ensureCourseAccess(user, courseId);
+export async function getModuleFeedbackAnalysis(user: SessionUser, courseId?: number) {
+  if (courseId) await ensureCourseAccess(user, courseId);
 
   if (courseId) {
-    return sqlAll<{ course_id: number; course_title: string; module_name: string; avg_score: number; cnt: number }>(
+    return await sqlAll<{ course_id: number; course_title: string; module_name: string; avg_score: number; cnt: number }>(
       `select f.course_id,c.title as course_title,f.module_name,avg(f.score) as avg_score,count(*) as cnt
        from feedbacks f join courses c on c.id=f.course_id
        where f.review_status='APPROVED' and f.course_id=?
@@ -375,7 +376,7 @@ export function getModuleFeedbackAnalysis(user: SessionUser, courseId?: number) 
   }
 
   if (user.role === "ADMIN") {
-    return sqlAll<{ course_id: number; course_title: string; module_name: string; avg_score: number; cnt: number }>(
+    return await sqlAll<{ course_id: number; course_title: string; module_name: string; avg_score: number; cnt: number }>(
       `select f.course_id,c.title as course_title,f.module_name,avg(f.score) as avg_score,count(*) as cnt
        from feedbacks f join courses c on c.id=f.course_id
        where f.review_status='APPROVED'
@@ -383,7 +384,7 @@ export function getModuleFeedbackAnalysis(user: SessionUser, courseId?: number) 
     );
   }
 
-  return sqlAll<{ course_id: number; course_title: string; module_name: string; avg_score: number; cnt: number }>(
+  return await sqlAll<{ course_id: number; course_title: string; module_name: string; avg_score: number; cnt: number }>(
     `select f.course_id,c.title as course_title,f.module_name,avg(f.score) as avg_score,count(*) as cnt
      from feedbacks f join courses c on c.id=f.course_id
      where f.review_status='APPROVED' and c.scope=?
@@ -396,19 +397,19 @@ export async function rechargeOpcPoints(user: SessionUser, amount: number) {
   if (user.role !== "OPC" && user.role !== "ADMIN") throw new Error("仅 OPC 可充值");
   const targetId = user.role === "OPC" ? user.id : user.id;
   await mockPaymentGateway("COURSE_DESIGN_START");
-  withTx(() => {
-    const row = sqlOne<{ points: number }>("select points from users where id=?", targetId);
+  await withTx(async () => {
+    const row = await sqlOne<{ points: number }>("select points from users where id=?", targetId);
     if (!row) throw new Error("用户不存在");
-    sqlRun("update users set points=? where id=?", row.points + amount, targetId);
-    sqlRun("insert into billing_logs(user_id,action,points_delta,note) values (?,?,?,?)", targetId, "RECHARGE", amount, `在线充值 ${amount} 积分`);
+    await sqlRun("update users set points=? where id=?", row.points + amount, targetId);
+    await sqlRun("insert into billing_logs(user_id,action,points_delta,note) values (?,?,?,?)", targetId, "RECHARGE", amount, `在线充值 ${amount} 积分`);
   });
   revalidatePath("/opc");
   revalidatePath("/dashboard");
 }
 
-export function listShareLinks(user: SessionUser) {
+export async function listShareLinks(user: SessionUser) {
   if (user.role === "ADMIN") {
-    return sqlAll<{
+    return await sqlAll<{
       id: number;
       token: string;
       report_id: number;
@@ -422,7 +423,7 @@ export function listShareLinks(user: SessionUser) {
        order by sl.id desc`,
     );
   }
-  return sqlAll(
+  return await sqlAll(
     `select sl.id,sl.token,sl.report_id,c.title as course_title,sl.is_active,sl.expires_at,sl.created_at
      from share_links sl join quality_reports qr on qr.id=sl.report_id join courses c on c.id=qr.course_id
      where sl.owner_id=? order by sl.id desc`,
@@ -430,22 +431,22 @@ export function listShareLinks(user: SessionUser) {
   );
 }
 
-export function revokeShareLink(user: SessionUser, linkId: number) {
-  const link = sqlOne<{ owner_id: number }>("select owner_id from share_links where id=?", linkId);
+export async function revokeShareLink(user: SessionUser, linkId: number) {
+  const link = await sqlOne<{ owner_id: number }>("select owner_id from share_links where id=?", linkId);
   if (!link) throw new Error("分享链接不存在");
   if (user.role !== "ADMIN" && link.owner_id !== user.id) throw new Error("无权撤销");
-  sqlRun("update share_links set is_active=0 where id=?", linkId);
+  await sqlRun("update share_links set is_active=0 where id=?", linkId);
   revalidateReportsPages();
 }
 
-export function getCourseOutput(user: SessionUser, courseId: number, type: "outline" | "workbook" | "deck") {
-  ensureCourseAccess(user, courseId);
-  const course = sqlOne<{ title: string; status: string }>("select title,status from courses where id=?", courseId);
+export async function getCourseOutput(user: SessionUser, courseId: number, type: "outline" | "workbook" | "deck") {
+  await ensureCourseAccess(user, courseId);
+  const course = await sqlOne<{ title: string; status: string }>("select title,status from courses where id=?", courseId);
   if (!course) throw new Error("课程不存在");
   if (course.status !== "RELEASED") {
     throw new Error("课程尚未发布交付，请先完成知识补充并通过交付审核");
   }
-  const output = sqlOne<{ outline: string; workbook: string; deck_package: string }>(
+  const output = await sqlOne<{ outline: string; workbook: string; deck_package: string }>(
     "select outline,workbook,deck_package from course_outputs where course_id=?",
     courseId,
   );
@@ -458,13 +459,13 @@ export function getCourseOutput(user: SessionUser, courseId: number, type: "outl
   return map[type];
 }
 
-export function addKnowledge(user: SessionUser, formData: FormData) {
+export async function addKnowledge(user: SessionUser, formData: FormData) {
   const category = String(formData.get("category") ?? "MODULE");
   const title = String(formData.get("title") ?? "");
   const content = String(formData.get("content") ?? "");
   const scope = (formData.get("scope") as "INTERNAL" | "OPC" | null) ?? user.scope;
   if (user.role !== "ADMIN" && user.role !== "MANAGER") ensureScope(user, scope);
-  sqlRun(
+  await sqlRun(
     "insert into knowledge_items(category,title,content,source_kind,scope,review_status,created_by) values (?,?,?,?,?,?,?)",
     category,
     title,
@@ -477,25 +478,25 @@ export function addKnowledge(user: SessionUser, formData: FormData) {
   revalidateKnowledgePages();
 }
 
-export function reviewKnowledge(user: SessionUser, id: number, status: "APPROVED" | "REJECTED") {
+export async function reviewKnowledge(user: SessionUser, id: number, status: "APPROVED" | "REJECTED") {
   if (user.role !== "MANAGER" && user.role !== "ADMIN") throw new Error("无审核权限");
-  sqlRun("update knowledge_items set review_status=?,reviewed_by=?,updated_at=datetime('now') where id = ?", status, user.id, id);
+  await sqlRun("update knowledge_items set review_status=?,reviewed_by=?,updated_at=datetime('now') where id = ?", status, user.id, id);
   revalidateKnowledgePages();
 }
 
-export function addFeedback(user: SessionUser, formData: FormData) {
+export async function addFeedback(user: SessionUser, formData: FormData) {
   const courseId = Number(formData.get("courseId") ?? 0);
   const feedbackType = String(formData.get("feedbackType") ?? "SURVEY");
   const score = Number(formData.get("score") ?? 5);
   const moduleName = String(formData.get("moduleName") ?? "整体");
   const content = String(formData.get("content") ?? "");
-  const course = sqlOne<{ scope: "INTERNAL" | "OPC"; owner_id: number }>(
+  const course = await sqlOne<{ scope: "INTERNAL" | "OPC"; owner_id: number }>(
     "select scope,owner_id from courses where id = ?",
     courseId,
   );
   if (!course) throw new Error("课程不存在");
   if (user.role !== "ADMIN" && user.role !== "MANAGER" && course.owner_id !== user.id) throw new Error("仅可录入本人课程反馈");
-  sqlRun(
+  await sqlRun(
     "insert into feedbacks(course_id,feedback_type,score,module_name,content,created_by) values (?,?,?,?,?,?)",
     courseId,
     feedbackType,
@@ -507,16 +508,16 @@ export function addFeedback(user: SessionUser, formData: FormData) {
   revalidateFeedbackPages();
 }
 
-export function reviewFeedback(user: SessionUser, id: number, status: "APPROVED" | "REJECTED") {
+export async function reviewFeedback(user: SessionUser, id: number, status: "APPROVED" | "REJECTED") {
   if (user.role !== "MANAGER" && user.role !== "ADMIN") throw new Error("无审核权限");
-  sqlRun("update feedbacks set review_status=?,reviewed_by=? where id=?", status, user.id, id);
+  await sqlRun("update feedbacks set review_status=?,reviewed_by=? where id=?", status, user.id, id);
   if (status === "APPROVED") {
-    const row = sqlOne<{ content: string; module_name: string; course_id: number; scope: "INTERNAL" | "OPC" }>(
+    const row = await sqlOne<{ content: string; module_name: string; course_id: number; scope: "INTERNAL" | "OPC" }>(
       `select f.content,f.module_name,f.course_id,c.scope from feedbacks f join courses c on c.id=f.course_id where f.id=?`,
       id,
     );
     if (row) {
-      sqlRun(
+      await sqlRun(
         "insert into knowledge_suggestions(feedback_id,category,title,content,scope,status) values (?,?,?,?,?,?)",
         id,
         "CASE",
@@ -532,7 +533,7 @@ export function reviewFeedback(user: SessionUser, id: number, status: "APPROVED"
 }
 
 export async function generateQualityReport(user: SessionUser, courseId: number) {
-  const course = sqlOne<{ id: number; title: string; owner_id: number; scope: "INTERNAL" | "OPC" }>(
+  const course = await sqlOne<{ id: number; title: string; owner_id: number; scope: "INTERNAL" | "OPC" }>(
     "select id,title,owner_id,scope from courses where id=?",
     courseId,
   );
@@ -541,25 +542,25 @@ export async function generateQualityReport(user: SessionUser, courseId: number)
     throw new Error("仅内部员工与 OPC 讲师可生成分析报告");
   }
   if (course.owner_id !== user.id) throw new Error("仅可分析本人课程");
-  assertOpcCanAfford(user, "REPORT_GENERATE");
+  await assertOpcCanAfford(user, "REPORT_GENERATE");
   if (user.role === "OPC") {
-    const { reportGenerateCost } = getPlatformSettings();
+    const { reportGenerateCost } = await getPlatformSettings();
     await mockPaymentGateway("REPORT_GENERATE");
-    deductPoints(user.id, "REPORT_GENERATE", -reportGenerateCost, "生成分析报告扣费");
+    await deductPoints(user.id, "REPORT_GENERATE", -reportGenerateCost, "生成分析报告扣费");
   }
 
-  const { minFeedbackForTrend } = getPlatformSettings();
-  const stats = sqlOne<{ avgScore: number | null; cnt: number }>(
+  const { minFeedbackForTrend } = await getPlatformSettings();
+  const stats = await sqlOne<{ avgScore: number | null; cnt: number }>(
     "select avg(score) as avgScore,count(*) as cnt from feedbacks where course_id=? and review_status='APPROVED'",
     courseId,
   );
   if (!stats || stats.cnt < minFeedbackForTrend) {
     throw new Error(`反馈样本不足（需至少 ${minFeedbackForTrend} 条已审核反馈）`);
   }
-  const weakModules = sqlAll<{ module_name: string; avg_score: number }>(
+  const weakModules = (await sqlAll<{ module_name: string; avg_score: number }>(
     "select module_name,avg(score) as avg_score from feedbacks where course_id=? and review_status='APPROVED' group by module_name having avg(score) < 4",
     courseId,
-  ).map((x) => x.module_name);
+  )).map((x) => x.module_name);
   const avgScore = stats.avgScore ?? 0;
   const iterationActions = buildIterationActions(weakModules, avgScore);
   const reportText = await mockLLMGenerateReport({
@@ -567,7 +568,7 @@ export async function generateQualityReport(user: SessionUser, courseId: number)
     avgScore,
     weakModules,
   });
-  const result = sqlRun(
+  const result = await sqlRun(
     "insert into quality_reports(course_id,generated_by,report_text,summary_score,iteration_actions) values (?,?,?,?,?)",
     courseId,
     user.id,
@@ -579,19 +580,19 @@ export async function generateQualityReport(user: SessionUser, courseId: number)
   return Number(result.lastInsertRowid);
 }
 
-export function createShareLink(user: SessionUser, reportId: number) {
-  const report = sqlOne<{ id: number; generated_by: number }>("select id,generated_by from quality_reports where id=?", reportId);
+export async function createShareLink(user: SessionUser, reportId: number) {
+  const report = await sqlOne<{ id: number; generated_by: number }>("select id,generated_by from quality_reports where id=?", reportId);
   if (!report) throw new Error("报告不存在");
   if (user.role !== "ADMIN" && report.generated_by !== user.id) throw new Error("仅可分享本人报告");
   const token = createToken();
   const expiresAt = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString();
-  sqlRun("insert into share_links(report_id,owner_id,token,is_active,expires_at) values (?,?,?,1,?)", reportId, user.id, token, expiresAt);
+  await sqlRun("insert into share_links(report_id,owner_id,token,is_active,expires_at) values (?,?,?,1,?)", reportId, user.id, token, expiresAt);
   revalidateReportsPages();
   return token;
 }
 
-export function getShareReport(token: string) {
-  const base = sqlOne<{
+export async function getShareReport(token: string) {
+  const base = await sqlOne<{
     title: string;
     report_text: string;
     summary_score: number;
@@ -607,7 +608,7 @@ export function getShareReport(token: string) {
     token,
   );
   if (!base) return null;
-  const moduleSummary = sqlAll<{ module_name: string; avg_score: number; cnt: number }>(
+  const moduleSummary = await sqlAll<{ module_name: string; avg_score: number; cnt: number }>(
     `select module_name,avg(score) as avg_score,count(*) as cnt from feedbacks
      where course_id=? and review_status='APPROVED' group by module_name order by avg_score asc`,
     base.course_id,
@@ -615,31 +616,31 @@ export function getShareReport(token: string) {
   return { ...base, moduleSummary };
 }
 
-export function listDashboardData(user: SessionUser) {
-  const courses = listCourses(user);
+export async function listDashboardData(user: SessionUser) {
+  const courses = await listCourses(user);
   const knowledgeItems = user.role === "ADMIN"
-    ? sqlAll("select * from knowledge_items order by id desc")
-    : sqlAll("select * from knowledge_items where scope = ? order by id desc", user.scope);
+    ? await sqlAll("select * from knowledge_items order by id desc")
+    : await sqlAll("select * from knowledge_items where scope = ? order by id desc", user.scope);
   const feedbacks = user.role === "ADMIN"
-    ? sqlAll("select * from feedbacks order by id desc")
-    : sqlAll(
+    ? await sqlAll("select * from feedbacks order by id desc")
+    : await sqlAll(
         `select f.* from feedbacks f join courses c on c.id=f.course_id
          where c.scope = ? order by f.id desc`,
         user.scope,
       );
   const reports = user.role === "ADMIN"
-    ? sqlAll(
+    ? await sqlAll(
         `select qr.id,qr.course_id,c.title,qr.report_text,qr.summary_score,qr.iteration_actions,qr.created_at from quality_reports qr
          join courses c on c.id=qr.course_id order by qr.id desc`,
       )
-    : sqlAll(
+    : await sqlAll(
         `select qr.id,qr.course_id,c.title,qr.report_text,qr.summary_score,qr.iteration_actions,qr.created_at from quality_reports qr
          join courses c on c.id=qr.course_id
          where c.scope = ? order by qr.id desc`,
         user.scope,
       );
-  const { minFeedbackForTrend } = getPlatformSettings();
-  const scoreTrendRaw = sqlAll<{ courseId: number; title: string; avgScore: number; feedbackCount: number }>(
+  const { minFeedbackForTrend } = await getPlatformSettings();
+  const scoreTrendRaw = await sqlAll<{ courseId: number; title: string; avgScore: number; feedbackCount: number }>(
     `select c.id as courseId,c.title,coalesce(avg(f.score),0) as avgScore,count(f.id) as feedbackCount
      from courses c left join feedbacks f on f.course_id=c.id and f.review_status='APPROVED'
      ${user.role === "ADMIN" ? "" : "where c.scope = ?"}
@@ -650,25 +651,25 @@ export function listDashboardData(user: SessionUser) {
     ...t,
     meetsThreshold: t.feedbackCount >= minFeedbackForTrend,
   }));
-  const insights = sqlAll("select * from strategy_insights order by id desc");
-  const billing = sqlAll(
+  const insights = await sqlAll("select * from strategy_insights order by id desc");
+  const billing = await sqlAll(
     user.role === "OPC" ? "select * from billing_logs where user_id=? order by id desc" : "select * from billing_logs order by id desc",
     ...(user.role === "OPC" ? [user.id] : []),
   );
   return { courses, knowledgeItems, feedbacks, reports, scoreTrend, insights, billing };
 }
 
-export function createGrowthCard(user: SessionUser, content: string) {
+export async function createGrowthCard(user: SessionUser, content: string) {
   if (user.role !== "MANAGER" && user.role !== "ADMIN") throw new Error("无权限");
-  sqlRun("insert into growth_cards(user_id,card_text) values (?,?)", user.id, content);
+  await sqlRun("insert into growth_cards(user_id,card_text) values (?,?)", user.id, content);
   revalidatePath("/admin");
 }
 
-export function createVersionComparison(user: SessionUser, courseId: number, baseVersion: number, targetVersion: number, diffText: string) {
-  const course = sqlOne<{ owner_id: number }>("select owner_id from courses where id = ?", courseId);
+export async function createVersionComparison(user: SessionUser, courseId: number, baseVersion: number, targetVersion: number, diffText: string) {
+  const course = await sqlOne<{ owner_id: number }>("select owner_id from courses where id = ?", courseId);
   if (!course) throw new Error("课程不存在");
   if (user.role !== "ADMIN" && course.owner_id !== user.id) throw new Error("仅本人可对比版本");
-  sqlRun(
+  await sqlRun(
     "insert into version_comparisons(course_id,base_version,target_version,diff_text) values (?,?,?,?)",
     courseId,
     baseVersion,
@@ -678,35 +679,35 @@ export function createVersionComparison(user: SessionUser, courseId: number, bas
   revalidateCoursesPages();
 }
 
-export function upsertStrategyInsight(user: SessionUser, scope: "INTERNAL" | "OPC", title: string, insight: string) {
+export async function upsertStrategyInsight(user: SessionUser, scope: "INTERNAL" | "OPC", title: string, insight: string) {
   if (user.role !== "MANAGER" && user.role !== "ADMIN") throw new Error("无权限");
-  sqlRun("insert into strategy_insights(scope,title,insight) values (?,?,?)", scope, title, insight);
+  await sqlRun("insert into strategy_insights(scope,title,insight) values (?,?,?)", scope, title, insight);
   revalidatePath("/admin");
 }
 
-function deductPoints(userId: number, action: "COURSE_DESIGN_START" | "REPORT_GENERATE", delta: number, note: string) {
-  withTx(() => {
-    const row = sqlOne<{ points: number }>("select points from users where id = ?", userId);
+async function deductPoints(userId: number, action: "COURSE_DESIGN_START" | "REPORT_GENERATE", delta: number, note: string) {
+  await withTx(async () => {
+    const row = await sqlOne<{ points: number }>("select points from users where id = ?", userId);
     if (!row) throw new Error("用户不存在");
     const nextPoints = row.points + delta;
     if (nextPoints < 0) throw new Error("积分不足，请充值后继续");
-    sqlRun("update users set points=? where id=?", nextPoints, userId);
-    sqlRun("insert into billing_logs(user_id,action,points_delta,note) values (?,?,?,?)", userId, action, delta, note);
+    await sqlRun("update users set points=? where id=?", nextPoints, userId);
+    await sqlRun("insert into billing_logs(user_id,action,points_delta,note) values (?,?,?,?)", userId, action, delta, note);
   });
 }
 
 // --- 课后问卷 US-D1 ---
-export function createCourseSurvey(user: SessionUser, courseId: number) {
-  ensureCourseAccess(user, courseId);
+export async function createCourseSurvey(user: SessionUser, courseId: number) {
+  await ensureCourseAccess(user, courseId);
   if (user.role === "MANAGER") throw new Error("管理层不可发起问卷");
-  const existing = sqlOne<{ token: string }>(
+  const existing = await sqlOne<{ token: string }>(
     "select token from course_surveys where course_id=? and is_active=1 order by id desc limit 1",
     courseId,
   );
   if (existing) return existing.token;
   const token = createToken();
-  const title = sqlOne<{ title: string }>("select title from courses where id=?", courseId);
-  sqlRun(
+  const title = await sqlOne<{ title: string }>("select title from courses where id=?", courseId);
+  await sqlRun(
     "insert into course_surveys(course_id,token,title,created_by) values (?,?,?,?)",
     courseId,
     token,
@@ -717,17 +718,17 @@ export function createCourseSurvey(user: SessionUser, courseId: number) {
   return token;
 }
 
-export function getSurveyByToken(token: string) {
-  return sqlOne<{ id: number; course_id: number; title: string; is_active: number }>(
+export async function getSurveyByToken(token: string) {
+  return await sqlOne<{ id: number; course_id: number; title: string; is_active: number }>(
     "select id,course_id,title,is_active from course_surveys where token=? and is_active=1",
     token,
   );
 }
 
-export function getSurveyModuleOptions(token: string): string[] {
-  const survey = getSurveyByToken(token);
+export async function getSurveyModuleOptions(token: string): Promise<string[]> {
+  const survey = await getSurveyByToken(token);
   if (!survey) return ["整体"];
-  const course = sqlOne<{ framework: string; framework_modules: string | null }>(
+  const course = await sqlOne<{ framework: string; framework_modules: string | null }>(
     "select framework,framework_modules from courses where id=?",
     survey.course_id,
   );
@@ -737,8 +738,8 @@ export function getSurveyModuleOptions(token: string): string[] {
   return ["整体", ...names.filter((n) => n !== "整体")];
 }
 
-export function listCourseSurveys(user: SessionUser, courseId?: number) {
-  if (courseId) ensureCourseAccess(user, courseId);
+export async function listCourseSurveys(user: SessionUser, courseId?: number) {
+  if (courseId) await ensureCourseAccess(user, courseId);
   let sql = `select cs.id,cs.token,cs.course_id,c.title as course_title,cs.title,cs.created_at,
      (select count(*) from survey_responses sr where sr.survey_id=cs.id) as response_count
      from course_surveys cs join courses c on c.id=cs.course_id where cs.is_active=1`;
@@ -754,7 +755,7 @@ export function listCourseSurveys(user: SessionUser, courseId?: number) {
     sql += " and c.scope='INTERNAL'";
   }
   sql += " order by cs.id desc";
-  return sqlAll<{
+  return await sqlAll<{
     id: number;
     token: string;
     course_id: number;
@@ -765,20 +766,20 @@ export function listCourseSurveys(user: SessionUser, courseId?: number) {
   }>(sql, ...params);
 }
 
-export function submitSurveyResponse(
+export async function submitSurveyResponse(
   token: string,
   payload: { moduleName: string; score: number; content: string; respondentLabel?: string },
 ) {
-  const survey = getSurveyByToken(token);
+  const survey = await getSurveyByToken(token);
   if (!survey) throw new Error("问卷链接无效或已关闭");
-  const course = sqlOne<{ owner_id: number; scope: "INTERNAL" | "OPC" }>(
+  const course = await sqlOne<{ owner_id: number; scope: "INTERNAL" | "OPC" }>(
     "select owner_id,scope from courses where id=?",
     survey.course_id,
   );
   if (!course) throw new Error("课程不存在");
 
-  withTx(() => {
-    sqlRun(
+  await withTx(async () => {
+    await sqlRun(
       "insert into survey_responses(survey_id,module_name,score,content,respondent_label) values (?,?,?,?,?)",
       survey.id,
       payload.moduleName,
@@ -786,7 +787,7 @@ export function submitSurveyResponse(
       payload.content,
       payload.respondentLabel ?? "学员",
     );
-    sqlRun(
+    await sqlRun(
       "insert into feedbacks(course_id,feedback_type,score,module_name,content,created_by,review_status) values (?,?,?,?,?,?,?)",
       survey.course_id,
       "SURVEY",
@@ -801,10 +802,10 @@ export function submitSurveyResponse(
 }
 
 // --- 交付发布 US-C5 ---
-export function releaseCourseDelivery(user: SessionUser, courseId: number, acknowledgeRisk: boolean) {
-  ensureCourseAccess(user, courseId);
+export async function releaseCourseDelivery(user: SessionUser, courseId: number, acknowledgeRisk: boolean) {
+  await ensureCourseAccess(user, courseId);
   if (user.role === "MANAGER") throw new Error("管理层不可发布交付");
-  const course = sqlOne<{
+  const course = await sqlOne<{
     framework: string;
     framework_modules: string | null;
     core_problem: string;
@@ -812,7 +813,7 @@ export function releaseCourseDelivery(user: SessionUser, courseId: number, ackno
     status: string;
   }>("select framework,framework_modules,core_problem,scope,status from courses where id=?", courseId);
   if (!course) throw new Error("课程不存在");
-  const gaps = getKnowledgeGapsForCourse(
+  const gaps = await getKnowledgeGapsForCourse(
     courseId,
     course.scope,
     course.framework,
@@ -822,14 +823,14 @@ export function releaseCourseDelivery(user: SessionUser, courseId: number, ackno
   if (gaps.length > 0 && !acknowledgeRisk) {
     throw new Error(`仍有 ${gaps.length} 项知识缺口，请补充知识库或勾选「已知晓风险」后发布`);
   }
-  sqlRun("update courses set status='RELEASED',updated_at=datetime('now') where id=?", courseId);
+  await sqlRun("update courses set status='RELEASED',updated_at=datetime('now') where id=?", courseId);
   revalidateCoursesPages();
 }
 
 // --- 反馈→知识库 ---
-export function listKnowledgeSuggestions(user: SessionUser) {
+export async function listKnowledgeSuggestions(user: SessionUser) {
   const scopeFilter = user.role === "ADMIN" ? "" : "where ks.scope = ?";
-  return sqlAll<{
+  return await sqlAll<{
     id: number;
     title: string;
     content: string;
@@ -845,14 +846,14 @@ export function listKnowledgeSuggestions(user: SessionUser) {
   );
 }
 
-export function promoteKnowledgeSuggestion(user: SessionUser, suggestionId: number) {
+export async function promoteKnowledgeSuggestion(user: SessionUser, suggestionId: number) {
   if (user.role !== "MANAGER" && user.role !== "ADMIN") throw new Error("无权限");
-  const s = sqlOne<{ title: string; content: string; category: string; scope: "INTERNAL" | "OPC" }>(
+  const s = await sqlOne<{ title: string; content: string; category: string; scope: "INTERNAL" | "OPC" }>(
     "select title,content,category,scope from knowledge_suggestions where id=?",
     suggestionId,
   );
   if (!s) throw new Error("建议不存在");
-  const result = sqlRun(
+  const result = await sqlRun(
     "insert into knowledge_items(category,title,content,source_kind,scope,review_status,created_by) values (?,?,?,?,?,?,?)",
     s.category,
     s.title,
@@ -862,7 +863,7 @@ export function promoteKnowledgeSuggestion(user: SessionUser, suggestionId: numb
     "APPROVED",
     user.id,
   );
-  sqlRun(
+  await sqlRun(
     "update knowledge_suggestions set status='APPROVED',knowledge_item_id=? where id=?",
     Number(result.lastInsertRowid),
     suggestionId,
@@ -871,24 +872,24 @@ export function promoteKnowledgeSuggestion(user: SessionUser, suggestionId: numb
   revalidateFeedbackPages();
 }
 
-export function dismissKnowledgeSuggestion(user: SessionUser, suggestionId: number) {
+export async function dismissKnowledgeSuggestion(user: SessionUser, suggestionId: number) {
   if (user.role !== "MANAGER" && user.role !== "ADMIN") throw new Error("无权限");
-  sqlRun("update knowledge_suggestions set status='DISMISSED' where id=?", suggestionId);
+  await sqlRun("update knowledge_suggestions set status='DISMISSED' where id=?", suggestionId);
   revalidateFeedbackPages();
 }
 
 // --- 管理看板 US-D7 ---
-export function getManagementAnalytics(user: SessionUser) {
+export async function getManagementAnalytics(user: SessionUser) {
   if (user.role !== "MANAGER" && user.role !== "ADMIN") throw new Error("无权限");
   const scopeClause = user.role === "ADMIN" ? "" : "where c.scope = 'INTERNAL'";
-  const byCourseType = sqlAll<{ course_type: string; course_count: number; avg_score: number; feedback_count: number }>(
+  const byCourseType = await sqlAll<{ course_type: string; course_count: number; avg_score: number; feedback_count: number }>(
     `select c.course_type, count(distinct c.id) as course_count,
      coalesce(avg(f.score),0) as avg_score, count(f.id) as feedback_count
      from courses c left join feedbacks f on f.course_id=c.id and f.review_status='APPROVED'
      ${scopeClause}
      group by c.course_type order by avg_score desc`,
   );
-  const byPeriod = sqlAll<{ period: string; course_count: number; avg_score: number }>(
+  const byPeriod = await sqlAll<{ period: string; course_count: number; avg_score: number }>(
     `select strftime('%Y-%m', c.created_at) as period, count(distinct c.id) as course_count,
      coalesce(avg(f.score),0) as avg_score
      from courses c left join feedbacks f on f.course_id=c.id and f.review_status='APPROVED'
@@ -897,7 +898,7 @@ export function getManagementAnalytics(user: SessionUser) {
   );
   const internalVsOpc =
     user.role === "ADMIN"
-      ? sqlAll<{ scope: string; courses: number; avg_score: number }>(
+      ? await sqlAll<{ scope: string; courses: number; avg_score: number }>(
           `select c.scope, count(distinct c.id) as courses, coalesce(avg(f.score),0) as avg_score
            from courses c left join feedbacks f on f.course_id=c.id and f.review_status='APPROVED'
            group by c.scope`,
@@ -907,10 +908,10 @@ export function getManagementAnalytics(user: SessionUser) {
 }
 
 // --- 管理端全景 US-E8 F6 ---
-export function listAdminPanorama(user: SessionUser, scope: "INTERNAL" | "OPC") {
+export async function listAdminPanorama(user: SessionUser, scope: "INTERNAL" | "OPC") {
   if (user.role !== "ADMIN" && user.role !== "MANAGER") throw new Error("无权限");
   if (user.role === "MANAGER" && scope !== "INTERNAL") throw new Error("管理层仅可查看内部课程");
-  return sqlAll<{
+  return await sqlAll<{
     id: number;
     title: string;
     course_type: string;
@@ -932,24 +933,24 @@ export function listAdminPanorama(user: SessionUser, scope: "INTERNAL" | "OPC") 
   );
 }
 
-export function getCourseDetailForAdmin(user: SessionUser, courseId: number) {
+export async function getCourseDetailForAdmin(user: SessionUser, courseId: number) {
   if (user.role !== "ADMIN" && user.role !== "MANAGER") throw new Error("无权限");
-  const course = sqlOne<Record<string, unknown>>(
+  const course = await sqlOne<Record<string, unknown>>(
     `select c.*, u.name as owner_name, u.email as owner_email, u.role as owner_role
      from courses c join users u on u.id=c.owner_id where c.id=?`,
     courseId,
   );
   if (!course) return null;
   if (user.role === "MANAGER" && course.scope !== "INTERNAL") return null;
-  logAdminAudit(user, "VIEW_COURSE_DETAIL", "course", courseId, String(course.title));
-  const output = sqlOne<Record<string, unknown>>("select * from course_outputs where course_id=?", courseId);
+  await logAdminAudit(user, "VIEW_COURSE_DETAIL", "course", courseId, String(course.title));
+  const output = await sqlOne<Record<string, unknown>>("select * from course_outputs where course_id=?", courseId);
   const sectionSources = parseSectionSources(output?.section_sources as string | null);
-  const feedbacks = sqlAll("select * from feedbacks where course_id=? order by id desc", courseId);
-  const reports = sqlAll(
+  const feedbacks = await sqlAll("select * from feedbacks where course_id=? order by id desc", courseId);
+  const reports = await sqlAll(
     "select id,report_text,summary_score,iteration_actions,created_at from quality_reports where course_id=? order by id desc",
     courseId,
   );
-  const shareLinks = sqlAll(
+  const shareLinks = await sqlAll(
     `select sl.id,sl.token,sl.is_active,sl.expires_at,sl.created_at
      from share_links sl join quality_reports qr on qr.id=sl.report_id where qr.course_id=? order by sl.id desc`,
     courseId,
@@ -957,10 +958,10 @@ export function getCourseDetailForAdmin(user: SessionUser, courseId: number) {
   return { course, output, sectionSources, feedbacks, reports, shareLinks };
 }
 
-export function savePlatformSettings(user: SessionUser, input: Partial<PlatformSettings>) {
+export async function savePlatformSettings(user: SessionUser, input: Partial<PlatformSettings>) {
   if (user.role !== "ADMIN") throw new Error("仅平台管理员可修改运营配置");
-  persistPlatformSettings(user.id, input);
-  logAdminAudit(user, "UPDATE_PLATFORM_SETTINGS", "settings", undefined, JSON.stringify(input));
+  await persistPlatformSettings(user.id, input);
+  await logAdminAudit(user, "UPDATE_PLATFORM_SETTINGS", "settings", undefined, JSON.stringify(input));
   revalidatePath("/admin");
 }
 

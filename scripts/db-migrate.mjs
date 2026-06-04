@@ -1,34 +1,69 @@
 #!/usr/bin/env node
 import fs from "node:fs";
 import path from "node:path";
+import { createClient } from "@libsql/client";
 
-// @ts-expect-error Runtime module in current Node.
-import { DatabaseSync } from "node:sqlite";
+function resolveTursoClientConfig() {
+  const dataDir = path.join(process.cwd(), "data");
+  const defaultDbPath = path.join(dataDir, "app.sqlite");
+  const url = process.env.TURSO_DATABASE_URL ?? `file:${defaultDbPath}`;
 
-const root = process.cwd();
-const dbDir = path.join(root, "data");
-const dbPath = path.join(dbDir, "app.sqlite");
-const migrationsDir = path.join(root, "supabase", "migrations");
+  if (url.startsWith("file:")) {
+    fs.mkdirSync(dataDir, { recursive: true });
+    return { url, authToken: process.env.TURSO_AUTH_TOKEN };
+  }
 
-fs.mkdirSync(dbDir, { recursive: true });
-const db = new DatabaseSync(dbPath);
-db.exec("create table if not exists _migrations(name text primary key, applied_at text default (datetime('now')))");
+  if (!url.startsWith("libsql:")) {
+    throw new Error("Unsupported TURSO_DATABASE_URL. Use file:... or libsql://...");
+  }
+
+  if (!process.env.TURSO_AUTH_TOKEN) {
+    throw new Error("TURSO_AUTH_TOKEN is required for remote libsql databases.");
+  }
+
+  return { url, authToken: process.env.TURSO_AUTH_TOKEN };
+}
+
+function splitSqlStatements(sql) {
+  const stripped = sql.replace(/--[^\n]*/g, "");
+  return stripped
+    .split(";")
+    .map((s) => s.trim())
+    .filter(Boolean);
+}
+
+const migrationsDir = path.join(process.cwd(), "supabase", "migrations");
+const client = createClient(resolveTursoClientConfig());
+
+await client.execute("pragma foreign_keys = on");
+await client.execute(
+  "create table if not exists _migrations (name text primary key, applied_at text not null default (datetime('now')))",
+);
 
 const files = fs.readdirSync(migrationsDir).filter((f) => f.endsWith(".sql")).sort();
+
 for (const file of files) {
-  const exists = db.prepare("select 1 from _migrations where name=?").get(file);
-  if (exists) continue;
+  const exists = await client.execute({
+    sql: "select 1 from _migrations where name = ?",
+    args: [file],
+  });
+  if (exists.rows.length > 0) continue;
+
   const sql = fs.readFileSync(path.join(migrationsDir, file), "utf8");
-  db.exec("begin;");
+  const statements = splitSqlStatements(sql);
+  const tx = await client.transaction("write");
   try {
-    db.exec(sql);
-    db.prepare("insert into _migrations(name) values (?)").run(file);
-    db.exec("commit;");
+    for (const statement of statements) {
+      await tx.execute(statement);
+    }
+    await tx.execute({ sql: "insert into _migrations(name) values (?)", args: [file] });
+    await tx.commit();
     console.log(`Applied: ${file}`);
   } catch (error) {
-    db.exec("rollback;");
+    await tx.rollback();
     console.error(`Migration failed: ${file}`);
     throw error;
   }
 }
+
 console.log("Migrations done.");

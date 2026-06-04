@@ -9,10 +9,11 @@
     "lint": "eslint",
     "db:migration:new": "node scripts/db-migration-new.mjs",
     "db:migration:list": "node scripts/db-migration-list.mjs",
-    "db:migration:sync-remote": "node scripts/db-migration-sync-remote.mjs",
-    "db:migrate": "node scripts/db-migrate.mjs"
+    "db:migrate": "node scripts/db-migrate.mjs",
+    "db:seed": "npx tsx --tsconfig tsconfig.json scripts/db-seed.ts"
   },
   "dependencies": {
+    "@libsql/client": "^0.17.3",
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
     "lucide-react": "^1.17.0",
@@ -32,6 +33,7 @@
     "eslint": "^9",
     "eslint-config-next": "16.2.6",
     "tailwindcss": "^4",
+    "tsx": "^4.22.4",
     "typescript": "^5"
   }
 }

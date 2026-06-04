@@ -5,10 +5,10 @@ import { DashboardBento } from "@/components/dashboard-bento";
 
 export default async function DashboardPage() {
   const user = await requireUser();
-  const data = listDashboardData(user);
+  const data = await listDashboardData(user);
   const canAdmin = user.role === "ADMIN" || user.role === "MANAGER";
 
-  const pointsRow = sqlOne<{ points: number }>("select points from users where id = ?", user.id);
+  const pointsRow = await sqlOne<{ points: number }>("select points from users where id = ?", user.id);
   const opcPoints = pointsRow?.points ?? 0;
 
   const pendingKnowledge = data.knowledgeItems.filter(
@@ -19,7 +19,7 @@ export default async function DashboardPage() {
   ).length;
 
   const activeRate = data.courses.length > 0 ? Math.min(100, (data.feedbacks.length / data.courses.length) * 38) : 0;
-  const { minFeedbackForTrend } = getPlatformSettings();
+  const { minFeedbackForTrend } = await getPlatformSettings();
 
   return (
     <DashboardBento

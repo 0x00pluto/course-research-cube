@@ -12,7 +12,7 @@ const cardCls = "rounded-lg border border-[#dee0e3] bg-white p-6";
 export default async function SurveyPage(props: Props) {
   const { token } = await props.params;
   const query = await props.searchParams;
-  const survey = getSurveyByToken(token);
+  const survey = await getSurveyByToken(token);
 
   if (query.thanks === "1") {
     return (
@@ -36,7 +36,7 @@ export default async function SurveyPage(props: Props) {
     );
   }
 
-  const moduleOptions = getSurveyModuleOptions(token);
+  const moduleOptions = await getSurveyModuleOptions(token);
 
   return (
     <main className={pageShell}>

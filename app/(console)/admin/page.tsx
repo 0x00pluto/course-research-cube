@@ -18,7 +18,7 @@ export default async function AdminPage({
 }) {
   const params = await searchParams;
   const user = await requireRoles(["ADMIN", "MANAGER"]);
-  const settings = getPlatformSettings();
+  const settings = await getPlatformSettings();
   const tab =
     params.tab === "opc" && user.role === "ADMIN"
       ? "opc"
@@ -28,14 +28,14 @@ export default async function AdminPage({
           ? "audit"
           : "internal";
 
-  const data = listDashboardData(user);
-  const internalCourses = listAdminPanorama(user, "INTERNAL");
-  const opcCourses = user.role === "ADMIN" ? listAdminPanorama(user, "OPC") : [];
-  const growthCards = sqlAll<{ id: number; card_text: string; created_at: string }>(
+  const data = await listDashboardData(user);
+  const internalCourses = await listAdminPanorama(user, "INTERNAL");
+  const opcCourses = user.role === "ADMIN" ? await listAdminPanorama(user, "OPC") : [];
+  const growthCards = await sqlAll<{ id: number; card_text: string; created_at: string }>(
     "select id,card_text,created_at from growth_cards order by id desc",
   );
   const panorama = tab === "opc" ? opcCourses : internalCourses;
-  const auditLogs = tab === "audit" ? listAdminAuditLogs(80) : [];
+  const auditLogs = tab === "audit" ? await listAdminAuditLogs(80) : [];
 
   return (
     <div className="space-y-3">
