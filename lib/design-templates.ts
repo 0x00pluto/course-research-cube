@@ -86,7 +86,7 @@ export const PROBLEM_PRESETS: ProblemPreset[] = [
   { value: "工具不会用", label: "工具不会用，上手慢", priorityModules: ["功能模块", "操作步骤", "练习册"] },
   { value: "协作效率低", label: "协作效率低，信息不同步", priorityModules: ["协作场景", "案例素材", "流程模板"] },
   { value: "缺乏方法论", label: "缺乏方法论，执行无章法", priorityModules: ["框架拆解", "理论+实操", "复盘"] },
-  { value: "产品植入难", label: "产品植入难，客户反感硬推", priorityModules: ["场景演示", "可选方案", "价值叙事"] },
+  { value: "产品植入难", label: "产品植入难，客户反感硬推", priorityModules: ["场景演练", "可选方案", "价值叙事"] },
   { value: "培训效果差", label: "培训效果差，学员记不住", priorityModules: ["互动节奏", "作业闭环", "讲师技巧"] },
 ];
 

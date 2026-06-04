@@ -10,7 +10,7 @@ export interface LLMInput {
 
 export async function mockLLMGenerateFramework(input: LLMInput) {
   await delay(250);
-  return `# 课程框架（AI建议）
+  return `# 课程框架
 1) 破冰与目标对齐（10分钟）
 2) 核心问题拆解：${input.coreProblem}（30分钟）
 3) 场景演练：${input.learnerType} 真实案例（40分钟）
@@ -43,7 +43,7 @@ export async function mockLLMGenerateReport(payload: {
 
 export async function mockPaymentGateway(action: "COURSE_DESIGN_START" | "REPORT_GENERATE") {
   await delay(120);
-  return { success: true, channel: "mock-payment", action };
+  return { success: true, channel: "online-payment", action };
 }
 
 export async function mockMarketDataFeed(problem: string) {

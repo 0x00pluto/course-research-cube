@@ -11,9 +11,9 @@ export default async function SharePage(props: Props) {
     return (
       <main className="mx-auto min-h-screen w-full max-w-3xl px-6 py-10">
         <section className="rounded-2xl border bg-card p-6">
-          <h1 className="text-2xl font-semibold">企业分享页示例</h1>
+          <h1 className="text-2xl font-semibold">课程质量分析报告</h1>
           <p className="mt-3 text-muted-foreground">
-            真实分享链接由 OPC 讲师在报告页主动生成，未授权时无法访问。
+            本页展示对外分享报告的版式与阅读体验。正式报告链接由讲师在「报告与分享」中生成，仅授权对象可访问。
           </p>
           <Link href="/" className="mt-6 inline-block rounded-lg border px-3 py-2">
             返回首页

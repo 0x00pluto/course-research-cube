@@ -1,0 +1,2500 @@
+      <AppPanel description="对外分享页默认 30 天有效，可随时预览或撤销；企业仅能通过您主动分享的链接访问。">
+        {shareLinks.length === 0 ? (
+          <p className="text-[13px] text-[#8f959e]">
+            暂无分享链接。请先在
+            <Link href="/reports/analysis" className="mx-1 text-[#3370ff]">
+              质量报告
+            </Link>
+            中生成报告并创建分享链接。
+          </p>
+        ) : (
+          <div className="space-y-2">
+            {shareLinks.map((link) => {
+              const row = link as {
+                id: number;
+                token: string;
+                course_title: string;
+                is_active: number;
+                expires_at: string | null;
+                created_at: string;
+              };
+              const active = row.is_active === 1;
+              return (
+                <div
+                  key={row.id}
+                  className="flex flex-wrap items-center justify-between gap-2 rounded-md border border-[#eef0f3] px-3 py-2 text-[13px]"
+                >
+                  <div>
+                    <span className="font-medium text-[#1f2329]">{row.course_title}</span>
+                    <span className="ml-2 text-[#8f959e]">
+                      {active ? "有效" : "已撤销"} · 过期 {row.expires_at?.slice(0, 10) ?? "—"} · 创建于 {row.created_at?.slice(0, 10) ?? "—"}
+                    </span>
+                  </div>
+                  <div className="flex gap-3">
+                    {active ? (
+                      <>
+                        <Link href={`/share/${row.token}`} className="text-[#3370ff]">
+                          预览分享页
+                        </Link>
+                        <form action={revokeShareAction}>
+                          <input type="hidden" name="linkId" value={String(row.id)} />
+                          <button type="submit" className="text-[#646a73]">
+                            撤销链接
+                          </button>
+                        </form>
+                      </>
+                    ) : (
+                      <span className="text-[#8f959e]">已失效</span>
+                    )}
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        )}
+      </AppPanel>
+    </div>
+  );
+}
+
+
+### app/(console)/opc/page.tsx
+
+import { rechargeAction } from "@/app/actions";
+import { requireRoles } from "@/lib/auth";
+import { getPlatformSettings, getUserPoints, listDashboardData } from "@/lib/services";
+import { AppPanel, btnPrimary, inputCls, StatCard } from "@/components/app-panel";
+import { formatBillingAction } from "@/lib/display-labels";
+
+export default async function OpcPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ recharged?: string; error?: string }>;
+}) {
+  const params = await searchParams;
+  const user = await requireRoles(["OPC", "ADMIN"]);
+  const data = listDashboardData(user);
+  const opcPoints = getUserPoints(user.role === "OPC" ? user.id : user.id);
+  const settings = getPlatformSettings();
+
+  return (
+    <div className="space-y-3">
+      {params.error ? (
+        <p className="rounded-md border border-[#ffccc7] bg-[#fff2f0] px-4 py-3 text-[13px] text-[#cf1322]">{params.error}</p>
+      ) : null}
+      {params.recharged ? (
+        <p className="rounded-md border border-[#b7eb8f] bg-[#f6ffed] px-4 py-3 text-[13px] text-[#389e0d]">充值成功。</p>
+      ) : null}
+
+      <div className="grid gap-3 sm:grid-cols-3">
+        <StatCard label="当前积分余额" value={opcPoints} />
+        <StatCard label="课程设计扣费" value={`${settings.courseDesignCost} 积分/次`} />
+        <StatCard label="报告生成扣费" value={`${settings.reportGenerateCost} 积分/次`} />
+      </div>
+
+      {user.role === "OPC" && opcPoints < settings.courseDesignCost ? (
+        <div className="rounded-md border border-[#ffccc7] bg-[#fff2f0] px-4 py-3 text-[13px] text-[#cf1322]">
+          余额不足：当前 {opcPoints} 积分，无法发起新的课程设计。请充值后再继续使用。
+        </div>
+      ) : null}
+
+      {user.role === "OPC" ? (
+        <AppPanel title="积分充值" description="支持在线支付，充值成功后积分即时到账。">
+          <form action={rechargeAction} className="flex flex-wrap items-end gap-2">
+            <select name="amount" className={inputCls} defaultValue="10">
+              <option value="10">充值 10 积分</option>
+              <option value="20">充值 20 积分</option>
+              <option value="50">充值 50 积分</option>
+            </select>
+            <button type="submit" className={btnPrimary}>
+              立即充值
+            </button>
+          </form>
+        </AppPanel>
+      ) : null}
+
+      <AppPanel title="计费规则" description="OPC 按次计费，开始前请确认需求。">
+        <ul className="list-inside list-disc space-y-1 text-[13px] text-[#646a73]">
+          <li>点击「开始课程设计」立即扣除 5 积分，中途放弃不退还。</li>
+          <li>生成分析报告按次扣除 3 积分。</li>
+          <li>已生成的报告重复查看不重复扣费。</li>
+          <li>余额不足时系统将阻止继续操作并提示充值。</li>
+        </ul>
+      </AppPanel>
+
+      <AppPanel title="积分流水">
+        <div className="space-y-1">
+          {data.billing.length === 0 ? (
+            <p className="text-[13px] text-[#8f959e]">暂无流水记录。</p>
+          ) : (
+            data.billing.map((b) => {
+              const row = b as { id: number; action: string; points_delta: number; note: string; created_at: string };
+              return (
+                <div key={row.id} className="flex items-center justify-between rounded-md border border-[#eef0f3] px-3 py-2 text-[12px]">
+                  <span className="text-[#646a73]">
+                    {formatBillingAction(row.action)} · {row.note}
+                  </span>
+                  <span className={row.points_delta < 0 ? "text-[#f53f3f]" : "text-[#00b42a]"}>
+                    {row.points_delta > 0 ? "+" : ""}
+                    {row.points_delta}
+                  </span>
+                </div>
+              );
+            })
+          )}
+        </div>
+      </AppPanel>
+    </div>
+  );
+}
+
+
+### app/(console)/admin/page.tsx
+
+import Link from "next/link";
+import { createGrowthCardAction, createStrategyInsightAction, updatePlatformSettingsAction } from "@/app/actions";
+import { requireRoles } from "@/lib/auth";
+import {
+  getPlatformSettings,
+  listAdminAuditLogs,
+  listAdminPanorama,
+  listDashboardData,
+} from "@/lib/services";
+import { AppPanel, btnPrimary, btnSecondary, inputCls } from "@/components/app-panel";
+import { sqlAll } from "@/lib/db";
+import { formatCourseStatus } from "@/lib/display-labels";
+
+export default async function AdminPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ tab?: string; saved?: string }>;
+}) {
+  const params = await searchParams;
+  const user = await requireRoles(["ADMIN", "MANAGER"]);
+  const settings = getPlatformSettings();
+  const tab =
+    params.tab === "opc" && user.role === "ADMIN"
+      ? "opc"
+      : params.tab === "settings"
+        ? "settings"
+        : params.tab === "audit"
+          ? "audit"
+          : "internal";
+
+  const data = listDashboardData(user);
+  const internalCourses = listAdminPanorama(user, "INTERNAL");
+  const opcCourses = user.role === "ADMIN" ? listAdminPanorama(user, "OPC") : [];
+  const growthCards = sqlAll<{ id: number; card_text: string; created_at: string }>(
+    "select id,card_text,created_at from growth_cards order by id desc",
+  );
+  const panorama = tab === "opc" ? opcCourses : internalCourses;
+  const auditLogs = tab === "audit" ? listAdminAuditLogs(80) : [];
+
+  return (
+    <div className="space-y-3">
+      {params.saved ? (
+        <p className="rounded-md border border-[#b7eb8f] bg-[#f6ffed] px-4 py-3 text-[13px] text-[#389e0d]">运营配置已保存。</p>
+      ) : null}
+
+      <div className="flex flex-wrap gap-2">
+        <Link
+          href="/admin?tab=internal"
+          className={`rounded-md px-3 py-1.5 text-[13px] ${tab === "internal" ? "bg-[#3370ff] text-white" : "border border-[#dee0e3] text-[#646a73]"}`}
+        >
+          内部课程 ({internalCourses.length})
+        </Link>
+        {user.role === "ADMIN" ? (
+          <Link
+            href="/admin?tab=opc"
+            className={`rounded-md px-3 py-1.5 text-[13px] ${tab === "opc" ? "bg-[#3370ff] text-white" : "border border-[#dee0e3] text-[#646a73]"}`}
+          >
+            OPC 课程 ({opcCourses.length})
+          </Link>
+        ) : null}
+        <Link
+          href="/admin?tab=settings"
+          className={`rounded-md px-3 py-1.5 text-[13px] ${tab === "settings" ? "bg-[#3370ff] text-white" : "border border-[#dee0e3] text-[#646a73]"}`}
+        >
+          运营配置
+        </Link>
+        <Link
+          href="/admin?tab=audit"
+          className={`rounded-md px-3 py-1.5 text-[13px] ${tab === "audit" ? "bg-[#3370ff] text-white" : "border border-[#dee0e3] text-[#646a73]"}`}
+        >
+          操作记录
+        </Link>
+        <Link href="/analytics" className="ml-auto text-[13px] text-[#3370ff]">
+          质量看板 →
+        </Link>
+      </div>
+
+      {tab === "internal" || tab === "opc" ? (
+        <AppPanel
+          title="双侧课程全景"
+          description="点击课程可查看完整内容（框架、输出物、反馈、报告）。"
+        >
+          <div className="max-h-[420px] space-y-2 overflow-y-auto">
+            {panorama.length === 0 ? (
+              <p className="text-[13px] text-[#8f959e]">暂无课程。</p>
+            ) : (
+              panorama.map((c) => (
+                <Link
+                  key={c.id}
+                  href={`/admin/courses/${c.id}`}
+                  className="block rounded-md border border-[#eef0f3] p-3 text-[12px] transition-colors hover:border-[#3370ff]"
+                >
+                  <div className="flex flex-wrap items-center justify-between gap-2">
+                    <span className="font-medium text-[#1f2329]">
+                      #{c.id} {c.title}
+                    </span>
+                    <span className="text-[#3370ff]">查看完整内容 →</span>
+                  </div>
+                  <p className="mt-1 text-[#646a73]">
+                    {formatCourseStatus(c.status)} · v{c.version} · {c.owner_name} · 反馈 {c.feedback_count} · 报告 {c.report_count} · 均分{" "}
+                    {Number(c.avg_score).toFixed(1)}
+                  </p>
+                </Link>
+              ))
+            )}
+          </div>
+        </AppPanel>
+      ) : null}
+
+      {tab === "settings" ? (
+        <AppPanel title="运营配置" description="最低反馈样本量、OPC 按次扣费额度。仅平台管理员可修改。">
+          <form action={updatePlatformSettingsAction} className="grid max-w-md gap-3">
+            <label className="text-[12px] text-[#646a73]">
+              质量趋势/报告最低样本量（条）
+              <input
+                name="minFeedbackForTrend"
+                type="number"
+                min={1}
+                max={20}
+                defaultValue={settings.minFeedbackForTrend}
+                className={`${inputCls} mt-1`}
+                disabled={user.role !== "ADMIN"}
+              />
+            </label>
+            <label className="text-[12px] text-[#646a73]">
+              课程设计扣费（积分/次）
+              <input
+                name="courseDesignCost"
+                type="number"
+                min={1}
+                max={100}
+                defaultValue={settings.courseDesignCost}
+                className={`${inputCls} mt-1`}
+                disabled={user.role !== "ADMIN"}
+              />
+            </label>
+            <label className="text-[12px] text-[#646a73]">
+              报告生成扣费（积分/次）
+              <input
+                name="reportGenerateCost"
+                type="number"
+                min={1}
+                max={100}
+                defaultValue={settings.reportGenerateCost}
+                className={`${inputCls} mt-1`}
+                disabled={user.role !== "ADMIN"}
+              />
+            </label>
+            {user.role === "ADMIN" ? (
+              <button type="submit" className={btnPrimary}>
+                保存配置
+              </button>
+            ) : (
+              <p className="text-[12px] text-[#8f959e]">培训负责人仅可查看，修改请联系平台管理员。</p>
+            )}
+          </form>
+        </AppPanel>
+      ) : null}
+
+      {tab === "audit" ? (
+        <AppPanel title="管理操作记录（§11.1）" description="记录管理员/负责人查看课程与配置变更。">
+          {auditLogs.length === 0 ? (
+            <p className="text-[13px] text-[#8f959e]">暂无记录。</p>
+          ) : (
+            <div className="max-h-[480px] space-y-2 overflow-y-auto">
+              {auditLogs.map((log) => (
+                <div key={log.id} className="rounded-md border border-[#eef0f3] px-3 py-2 text-[12px]">
+                  <div className="flex flex-wrap justify-between gap-2">
+                    <span className="font-medium text-[#1f2329]">
+                      {log.user_name} · {log.action}
+                    </span>
+                    <span className="text-[#8f959e]">{log.created_at}</span>
+                  </div>
+                  <p className="mt-1 text-[#646a73]">
+                    {log.target_type}
+                    {log.target_id != null ? ` #${log.target_id}` : ""}
+                    {log.detail ? ` · ${log.detail}` : ""}
+                  </p>
+                </div>
+              ))}
+            </div>
+          )}
+        </AppPanel>
+      ) : null}
+
+      {tab === "internal" ? (
+        <div className="grid gap-3 lg:grid-cols-2">
+          <AppPanel title="讲师成长辅导卡（P2）">
+            <form action={createGrowthCardAction} className="grid gap-2">
+              <textarea name="content" required className={inputCls} placeholder="输入成长建议卡片内容" rows={4} />
+              <button className={btnSecondary} type="submit">
+                生成成长卡
+              </button>
+            </form>
+            <div className="mt-4 space-y-2">
+              {growthCards.map((card) => (
+                <div key={card.id} className="rounded-md border border-[#eef0f3] p-3 text-[13px] text-[#646a73]">
+                  {card.card_text}
+                </div>
+              ))}
+            </div>
+          </AppPanel>
+
+          <AppPanel title="策略洞察维护（P2/P3）">
+            <form action={createStrategyInsightAction} className="grid gap-2">
+              <select name="scope" className={inputCls}>
+                <option value="INTERNAL">内部</option>
+                <option value="OPC">OPC</option>
+              </select>
+              <input name="title" className={inputCls} placeholder="洞察标题" required />
+              <textarea name="insight" className={inputCls} placeholder="洞察内容" required rows={4} />
+              <button className={btnSecondary} type="submit">
+                新增策略洞察
+              </button>
+            </form>
+            <div className="mt-4 space-y-2">
+              {data.insights.map((insight) => (
+                <div key={String((insight as { id: number }).id)} className="rounded-md border border-[#eef0f3] p-3">
+                  <p className="text-[13px] font-medium text-[#1f2329]">{String((insight as { title: string }).title)}</p>
+                  <p className="mt-1 text-[12px] text-[#8f959e]">{String((insight as { insight: string }).insight)}</p>
+                </div>
+              ))}
+            </div>
+          </AppPanel>
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
+
+### app/(console)/admin/courses/[id]/page.tsx
+
+import Link from "next/link";
+import { notFound } from "next/navigation";
+import { requireRoles } from "@/lib/auth";
+import { parseSectionSources } from "@/lib/output-sources";
+import { parseIterationActions } from "@/lib/iteration-actions";
+import { getCourseDetailForAdmin, getPlatformSettings } from "@/lib/services";
+import { AppPanel } from "@/components/app-panel";
+import { formatCourseStatus, formatRole, formatScope, formatSourceKind } from "@/lib/display-labels";
+
+interface Props {
+  params: Promise<{ id: string }>;
+}
+
+export default async function AdminCourseDetailPage(props: Props) {
+  const { id } = await props.params;
+  const courseId = Number(id);
+  if (!Number.isFinite(courseId)) notFound();
+
+  const user = await requireRoles(["ADMIN", "MANAGER"]);
+  const detail = getCourseDetailForAdmin(user, courseId);
+  if (!detail) notFound();
+
+  const { course, output, sectionSources, feedbacks, reports, shareLinks } = detail;
+  const settings = getPlatformSettings();
+
+  return (
+    <div className="space-y-3">
+      <div className="flex flex-wrap items-center gap-3 text-[13px]">
+        <Link href="/admin" className="text-[#3370ff]">
+          ← 返回管理后台
+        </Link>
+        <span className="text-[#8f959e]">管理员查看 · 不改变课程归属</span>
+      </div>
+
+      <AppPanel
+        title={`课程 #${courseId} · ${String(course.title)}`}
+        description={`归属：${String(course.owner_name)}（${formatRole(String(course.owner_role))}）· ${formatScope(String(course.scope))} · ${formatCourseStatus(String(course.status))} · v${String(course.version)}`}
+      >
+        <div className="grid gap-3 md:grid-cols-2 text-[12px] text-[#646a73]">
+          <p>课型：{String(course.course_type)}</p>
+          <p>学员：{String(course.learner_type)}</p>
+          <p className="md:col-span-2">核心问题：{String(course.core_problem)}</p>
+        </div>
+      </AppPanel>
+
+      <AppPanel title="课程框架">
+        <pre className="whitespace-pre-wrap rounded-md bg-[#fafbfc] p-3 text-[12px] text-[#646a73]">{String(course.framework)}</pre>
+      </AppPanel>
+
+      <AppPanel title="四类输入">
+        <div className="space-y-2 text-[12px] text-[#646a73]">
+          <p>
+            <span className="font-medium text-[#1f2329]">市场竞品：</span>
+            {String(course.market_info)}
+          </p>
+          <p>
+            <span className="font-medium text-[#1f2329]">用户洞察：</span>
+            {String(course.user_insight)}
+          </p>
+          <p>
+            <span className="font-medium text-[#1f2329]">产品植入：</span>
+            {String(course.product_embedding)}
+          </p>
+          <p>
+            <span className="font-medium text-[#1f2329]">授课技巧：</span>
+            {String(course.trainer_tips)}
+          </p>
+        </div>
+      </AppPanel>
+
+      {output ? (
+        <AppPanel title="输出物（大纲 / 练习册 / 课件包）">
+          <div className="space-y-3 text-[12px]">
+            <div>
+              <p className="font-medium text-[#1f2329]">课程大纲</p>
+              <pre className="mt-1 whitespace-pre-wrap rounded-md bg-[#fafbfc] p-3 text-[#646a73]">{String(output.outline)}</pre>
+            </div>
+            <div>
+              <p className="font-medium text-[#1f2329]">练习册</p>
+              <pre className="mt-1 whitespace-pre-wrap rounded-md bg-[#fafbfc] p-3 text-[#646a73]">{String(output.workbook)}</pre>
+            </div>
+            <div>
+              <p className="font-medium text-[#1f2329]">课件包</p>
+              <pre className="mt-1 whitespace-pre-wrap rounded-md bg-[#fafbfc] p-3 text-[#646a73]">{String(output.deck_package)}</pre>
+            </div>
+            {sectionSources.length > 0 ? (
+              <details>
+                <summary className="cursor-pointer text-[#3370ff]">分段来源追溯</summary>
+                <div className="mt-2 space-y-1">
+                  {sectionSources.map((s, i) => (
+                    <div key={i} className="flex justify-between text-[11px]">
+                      <span>
+                        {s.deliverable} · {s.section}
+                      </span>
+                      <span>
+                        {formatSourceKind(s.source_kind)} — {s.note}
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              </details>
+            ) : null}
+          </div>
+        </AppPanel>
+      ) : null}
+
+      <AppPanel title={`反馈记录（${feedbacks.length}）`}>
+        {feedbacks.length === 0 ? (
+          <p className="text-[13px] text-[#8f959e]">暂无反馈。</p>
+        ) : (
+          <div className="space-y-2">
+            {feedbacks.map((f) => {
+              const row = f as {
+                id: number;
+                module_name: string;
+                score: number;
+                content: string;
+                review_status: string;
+                feedback_type: string;
+              };
+              return (
+                <div key={row.id} className="rounded-md border border-[#eef0f3] p-3 text-[12px]">
+                  <span className="font-medium">
+                    {row.module_name} · {row.score} 分 · {row.review_status}
+                  </span>
+                  <p className="mt-1 text-[#646a73]">[{row.feedback_type}] {row.content}</p>
+                </div>
+              );
+            })}
+          </div>
+        )}
+        <p className="mt-2 text-[11px] text-[#8f959e]">
+          质量趋势展示门槛：至少 {settings.minFeedbackForTrend} 条已审核反馈
+        </p>
+      </AppPanel>
+
+      <AppPanel title={`分析报告（${reports.length}）`}>
+        {reports.length === 0 ? (
+          <p className="text-[13px] text-[#8f959e]">暂无报告。</p>
+        ) : (
+          <div className="space-y-3">
+            {reports.map((r) => {
+              const row = r as {
+                id: number;
+                report_text: string;
+                summary_score: number;
+                iteration_actions: string | null;
+                created_at: string;
+              };
+              const actions = parseIterationActions(row.iteration_actions);
+              return (
+                <div key={row.id} className="rounded-md border border-[#eef0f3] p-3 text-[12px]">
+                  <p className="font-medium text-[#1f2329]">
+                    报告 #{row.id} · 评分 {Number(row.summary_score).toFixed(2)} · {row.created_at}
+                  </p>
+                  {actions.length > 0 ? (
+                    <ul className="mt-2 list-inside list-disc text-[#646a73]">
+                      {actions.map((a, i) => (
+                        <li key={i}>
+                          [{a.priority}] {a.module}：{a.action}
+                        </li>
+                      ))}
+                    </ul>
+                  ) : null}
+                  <pre className="mt-2 whitespace-pre-wrap rounded-md bg-[#fafbfc] p-2 text-[11px]">{row.report_text}</pre>
+                </div>
+              );
+            })}
+          </div>
+        )}
+      </AppPanel>
+
+      {shareLinks.length > 0 ? (
+        <AppPanel title="分享链接">
+          <div className="space-y-2 text-[12px]">
+            {shareLinks.map((l) => {
+              const row = l as { id: number; token: string; is_active: number; expires_at: string | null };
+              return (
+                <div key={row.id} className="flex flex-wrap items-center gap-2">
+                  <Link href={`/share/${row.token}`} className="text-[#3370ff]">
+                    /share/{row.token.slice(0, 8)}…
+                  </Link>
+                  <span className="text-[#8f959e]">{row.is_active ? "有效" : "已撤销"}</span>
+                </div>
+              );
+            })}
+          </div>
+        </AppPanel>
+      ) : null}
+    </div>
+  );
+}
+
+
+### components/course-design-wizard.tsx
+
+"use client";
+
+import { useEffect, useMemo, useState } from "react";
+import type { FrameworkModule } from "@/lib/framework";
+import {
+  COURSE_TYPE_TEMPLATES,
+  LEARNER_TEMPLATES,
+  PROBLEM_PRESETS,
+  getCourseTypeTemplate,
+  getLearnerTemplate,
+  getProblemPreset,
+} from "@/lib/design-templates";
+import { DESIGN_STEPS, DESIGN_TARGET_MINUTES, calcDesignProgress } from "@/lib/framework";
+import type { KnowledgeRecommendation } from "@/lib/knowledge-recommend";
+import { btnPrimary, btnSecondary, inputCls } from "@/components/app-panel";
+
+interface CourseDesignWizardProps {
+  action: (formData: FormData) => void | Promise<void>;
+  isOpc: boolean;
+  opcPoints: number;
+  scope: "INTERNAL" | "OPC";
+  courseDesignCost?: number;
+  errorMessage?: string;
+}
+
+export function CourseDesignWizard({
+  action,
+  isOpc,
+  opcPoints,
+  scope,
+  courseDesignCost = 5,
+  errorMessage,
+}: CourseDesignWizardProps) {
+  const [step, setStep] = useState(0);
+  const [recommendations, setRecommendations] = useState<KnowledgeRecommendation[]>([]);
+  const [recLoading, setRecLoading] = useState(false);
+  const [startedAt] = useState(() => Date.now());
+  const [elapsedMin, setElapsedMin] = useState(0);
+  const [showConfirm, setShowConfirm] = useState(false);
+  const [problemPreset, setProblemPreset] = useState(PROBLEM_PRESETS[0].value);
+  const [form, setForm] = useState({
+    courseType: COURSE_TYPE_TEMPLATES[0].value,
+    learnerType: LEARNER_TEMPLATES[0].value,
+    title: "",
+    coreProblem: PROBLEM_PRESETS[0].label,
+    marketInfo: "",
+    userInsight: "",
+    productEmbedding: "",
+    trainerTips: "",
+  });
+
+  const typeTpl = getCourseTypeTemplate(form.courseType);
+  const learnerTpl = getLearnerTemplate(form.learnerType);
+  const problemTpl = getProblemPreset(problemPreset);
+
+  const previewModules = useMemo((): FrameworkModule[] => {
+    const fromLearner = learnerTpl.focusModules.map((title, i) => ({
+      id: `learner-${i}`,
+      title,
+      duration: "15分钟",
+      content: "",
+    }));
+    const fromProblem = (problemTpl?.priorityModules ?? []).map((title, i) => ({
+      id: `problem-${i}`,
+      title,
+      duration: "20分钟",
+      content: form.coreProblem,
+    }));
+    const merged = [...fromLearner];
+    for (const m of fromProblem) {
+      if (!merged.some((x) => x.title === m.title)) merged.push(m);
+    }
+    return merged.slice(0, 6);
+  }, [learnerTpl, problemTpl, form.coreProblem]);
+
+  useEffect(() => {
+    if (step !== 3) return;
+    let cancelled = false;
+    setRecLoading(true);
+    fetch("/api/knowledge/recommend", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ scope, modules: previewModules }),
+    })
+      .then((res) => res.json())
+      .then((data: { recommendations?: KnowledgeRecommendation[] }) => {
+        if (!cancelled) setRecommendations(data.recommendations ?? []);
+      })
+      .catch(() => {
+        if (!cancelled) setRecommendations([]);
+      })
+      .finally(() => {
+        if (!cancelled) setRecLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [step, scope, previewModules]);
+
+  useEffect(() => {
+    const timer = setInterval(() => {
+      setElapsedMin(Math.floor((Date.now() - startedAt) / 60000));
+    }, 10000);
+    return () => clearInterval(timer);
+  }, [startedAt]);
+
+  const progress = calcDesignProgress(step);
+  const remainingMin = Math.max(0, DESIGN_TARGET_MINUTES - elapsedMin);
+  const canAfford = !isOpc || opcPoints >= courseDesignCost;
+
+  const stepValid = useMemo(() => {
+    if (step === 0) return !!form.courseType;
+    if (step === 1) return !!form.learnerType;
+    if (step === 2) return form.title.trim().length > 0 && form.coreProblem.trim().length > 0;
+    if (step === 3) {
+      return (
+        form.marketInfo.trim().length > 0 &&
+        form.userInsight.trim().length > 0 &&
+        form.productEmbedding.trim().length > 0 &&
+        form.trainerTips.trim().length > 0
+      );
+    }
+    return true;
+  }, [step, form]);
+
+  function updateField(key: keyof typeof form, value: string) {
+    setForm((prev) => ({ ...prev, [key]: value }));
+  }
+
+  function onCourseTypeChange(value: string) {
+    const tpl = getCourseTypeTemplate(value);
+    setForm((prev) => ({
+      ...prev,
+      courseType: value,
+      title: prev.title || `${tpl.defaultTitle}${prev.coreProblem.slice(0, 12)}`,
+    }));
+  }
+
+  function onProblemPresetChange(value: string) {
+    setProblemPreset(value);
+    const preset = PROBLEM_PRESETS.find((p) => p.value === value);
+    if (preset) updateField("coreProblem", preset.label);
+  }
+
+  function handleSubmit() {
+    if (isOpc && !canAfford) return;
+    if (isOpc && !showConfirm) {
+      setShowConfirm(true);
+      return;
+    }
+    const fd = new FormData();
+    Object.entries(form).forEach(([k, v]) => fd.set(k, v));
+    fd.set("scope", scope);
+    if (isOpc) fd.set("billingConfirmed", "1");
+    action(fd);
+  }
+
+  return (
+    <div>
+      {errorMessage ? (
+        <p className="mb-3 rounded-md border border-[#ffccc7] bg-[#fff2f0] px-3 py-2 text-[12px] text-[#cf1322]">
+          {errorMessage}
+        </p>
+      ) : null}
+
+      <div className="mb-4 rounded-md border border-[#eef0f3] bg-[#fafbfc] p-4">
+        <div className="flex flex-wrap items-center justify-between gap-2 text-[12px] text-[#646a73]">
+          <span>
+            设计进度 {progress.percent}% · 已用 {elapsedMin} 分钟 · 目标 {DESIGN_TARGET_MINUTES} 分钟内完成
+          </span>
+          <span className={remainingMin <= 5 ? "text-[#ff7d00]" : ""}>预计剩余 {remainingMin} 分钟</span>
+        </div>
+        <div className="mt-2 h-2 overflow-hidden rounded-full bg-[#eef0f3]">
+          <div className="h-full rounded-full bg-[#3370ff] transition-all" style={{ width: `${progress.percent}%` }} />
+        </div>
+        <div className="mt-3 flex flex-wrap gap-2">
+          {DESIGN_STEPS.map((s, i) => (
+            <span
+              key={s.key}
+              className={`rounded px-2 py-0.5 text-[11px] ${
+                i === step ? "bg-[#3370ff] text-white" : i < step ? "bg-[#e8ffea] text-[#00b42a]" : "bg-[#f5f6f7] text-[#8f959e]"
+              }`}
+            >
+              {s.label}
+            </span>
+          ))}
+        </div>
+        {progress.remaining.length > 0 ? (
+          <p className="mt-2 text-[11px] text-[#8f959e]">剩余关键步骤：{progress.remaining.join(" → ")}</p>
+        ) : (
+          <p className="mt-2 text-[11px] text-[#00b42a]">所有步骤已就绪，可提交生成</p>
+        )}
+      </div>
+
+      <div className="grid gap-3">
+        {step === 0 ? (
+          <>
+            <p className="text-[13px] text-[#646a73]">{DESIGN_STEPS[0].hint}</p>
+            <select className={inputCls} value={form.courseType} onChange={(e) => onCourseTypeChange(e.target.value)}>
+              {COURSE_TYPE_TEMPLATES.map((t) => (
+                <option key={t.value} value={t.value}>
+                  {t.label}（{t.duration}）
+                </option>
+              ))}
+            </select>
+            <div className="rounded-md border border-[#edf3ff] bg-[#f5f9ff] p-3 text-[12px] text-[#646a73]">
+              <p className="font-medium text-[#3370ff]">课型模板 · {typeTpl.label}</p>
+              <p className="mt-1">建议结构：{typeTpl.structure.join(" → ")}</p>
+              <ul className="mt-1 list-inside list-disc">
+                {typeTpl.hints.map((h) => (
+                  <li key={h}>{h}</li>
+                ))}
+              </ul>
+            </div>
+          </>
+        ) : null}
+
+        {step === 1 ? (
+          <>
+            <p className="text-[13px] text-[#646a73]">{DESIGN_STEPS[1].hint}</p>
+            <select className={inputCls} value={form.learnerType} onChange={(e) => updateField("learnerType", e.target.value)}>
+              {LEARNER_TEMPLATES.map((t) => (
+                <option key={t.value} value={t.value}>
+                  {t.label}
+                </option>
+              ))}
+            </select>
+            <div className="rounded-md border border-[#edf3ff] bg-[#f5f9ff] p-3 text-[12px] text-[#646a73]">
+              <p className="font-medium text-[#3370ff]">学员设计提示</p>
+              <ul className="mt-1 list-inside list-disc">
+                {learnerTpl.hints.map((h) => (
+                  <li key={h}>{h}</li>
+                ))}
+              </ul>
+              <p className="mt-2">优先模块：{learnerTpl.focusModules.join("、")}</p>
+            </div>
+          </>
+        ) : null}
+
+        {step === 2 ? (
+          <>
+            <p className="text-[13px] text-[#646a73]">{DESIGN_STEPS[2].hint}</p>
+            <select className={inputCls} value={problemPreset} onChange={(e) => onProblemPresetChange(e.target.value)}>
+              {PROBLEM_PRESETS.map((p) => (
+                <option key={p.value} value={p.value}>
+                  {p.label}
+                </option>
+              ))}
+            </select>
+            {problemTpl ? (
+              <p className="text-[12px] text-[#8f959e]">推荐模块优先级：{problemTpl.priorityModules.join(" → ")}</p>
+            ) : null}
+            <input
+              className={inputCls}
+              placeholder="课程标题"
+              value={form.title}
+              onChange={(e) => updateField("title", e.target.value)}
+            />
+            <textarea
+              className={inputCls}
+              rows={2}
+              placeholder="用户问题（可微调）"
+              value={form.coreProblem}
+              onChange={(e) => updateField("coreProblem", e.target.value)}
+            />
+          </>
+        ) : null}
+
+        {step === 3 ? (
+          <>
+            <p className="text-[13px] text-[#646a73]">{DESIGN_STEPS[3].hint}</p>
+            <textarea
+              className={inputCls}
+              rows={2}
+              placeholder="市场竞品信息"
+              value={form.marketInfo}
+              onChange={(e) => updateField("marketInfo", e.target.value)}
+            />
+            <textarea
+              className={inputCls}
+              rows={2}
+              placeholder="用户洞察"
+              value={form.userInsight}
+              onChange={(e) => updateField("userInsight", e.target.value)}
+            />
+            <textarea
+              className={inputCls}
+              rows={2}
+              placeholder="产品植入"
+              value={form.productEmbedding}
+              onChange={(e) => updateField("productEmbedding", e.target.value)}
+            />
+            <textarea
+              className={inputCls}
+              rows={2}
+              placeholder="授课技巧"
+              value={form.trainerTips}
+              onChange={(e) => updateField("trainerTips", e.target.value)}
+            />
+            {recLoading ? (
+              <p className="text-[12px] text-[#8f959e]">正在按当前学员与问题匹配知识库…</p>
+            ) : null}
+            {recommendations.length > 0 ? (
+              <div className="rounded-md border border-[#e8f3ff] bg-[#fafbfc] p-3">
+                <p className="text-[12px] font-medium text-[#3370ff]">
+                  知识库推荐（按「{form.learnerType}」与核心问题匹配）
+                </p>
+                <div className="mt-2 max-h-48 space-y-2 overflow-y-auto">
+                  {recommendations.map((rec) => (
+                    <div key={rec.moduleTitle} className="text-[11px] text-[#646a73]">
+                      <span className="font-medium text-[#1f2329]">{rec.moduleTitle}</span>
+                      {rec.cases.length > 0 ? (
+                        <p className="mt-0.5">案例：{rec.cases.map((c) => c.title).join("；")}</p>
+                      ) : null}
+                      {rec.tips.length > 0 ? (
+                        <p>技巧：{rec.tips.map((t) => t.title).join("；")}</p>
+                      ) : null}
+                    </div>
+                  ))}
+                </div>
+              </div>
+            ) : null}
+          </>
+        ) : null}
+
+        {step === 4 ? (
+          <div className="rounded-md border border-[#eef0f3] bg-[#fafbfc] p-4 text-[13px] text-[#646a73]">
+            <p className="font-medium text-[#1f2329]">确认设计信息</p>
+            <ul className="mt-2 space-y-1">
+              <li>课型：{form.courseType}</li>
+              <li>学员：{form.learnerType}</li>
+              <li>标题：{form.title}</li>
+              <li>问题：{form.coreProblem}</li>
+            </ul>
+            {isOpc ? (
+              <p className="mt-3 rounded-md border border-[#ffe7ba] bg-[#fffbe6] px-3 py-2 text-[12px] text-[#ad6800]">
+                提交后将立即扣除 {courseDesignCost} 积分（当前余额 {opcPoints}），中途放弃不退还。
+              </p>
+            ) : null}
+          </div>
+        ) : null}
+      </div>
+
+      {showConfirm && isOpc ? (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/30 p-4">
+          <div className="w-full max-w-md rounded-lg bg-white p-5 shadow-lg">
+            <h3 className="text-[15px] font-medium text-[#1f2329]">确认计费规则</h3>
+            <p className="mt-2 text-[13px] text-[#646a73]">
+              点击确认后将扣除 {courseDesignCost} 积分并开始设计。中途放弃不退还本次扣费。
+            </p>
+            <div className="mt-4 flex justify-end gap-2">
+              <button type="button" className={btnSecondary} onClick={() => setShowConfirm(false)}>
+                取消
+              </button>
+              <button type="button" className={btnPrimary} disabled={!canAfford} onClick={handleSubmit}>
+                我已知晓，开始设计
+              </button>
+            </div>
+          </div>
+        </div>
+      ) : null}
+
+      <div className="mt-4 flex justify-between">
+        <button type="button" className={btnSecondary} disabled={step === 0} onClick={() => setStep((s) => Math.max(0, s - 1))}>
+          上一步
+        </button>
+        {step < DESIGN_STEPS.length - 1 ? (
+          <button type="button" className={btnPrimary} disabled={!stepValid} onClick={() => setStep((s) => Math.min(DESIGN_STEPS.length - 1, s + 1))}>
+            下一步
+          </button>
+        ) : (
+          <button type="button" className={btnPrimary} disabled={!canAfford} onClick={handleSubmit}>
+            {isOpc ? `确认并开始设计（扣 ${courseDesignCost} 积分）` : "开始设计并生成输出"}
+          </button>
+        )}
+      </div>
+    </div>
+  );
+}
+
+
+### components/course-framework-editor.tsx
+
+"use client";
+
+import { useState } from "react";
+import type { FrameworkModule } from "@/lib/framework";
+import { btnPrimary, btnSecondary, inputCls } from "@/components/app-panel";
+
+interface CourseFrameworkEditorProps {
+  courseId: number;
+  initialModules: FrameworkModule[];
+  action: (formData: FormData) => void | Promise<void>;
+}
+
+export function CourseFrameworkEditor({ courseId, initialModules, action }: CourseFrameworkEditorProps) {
+  const [modules, setModules] = useState<FrameworkModule[]>(initialModules);
+
+  function updateModule(index: number, patch: Partial<FrameworkModule>) {
+    setModules((prev) => prev.map((m, i) => (i === index ? { ...m, ...patch } : m)));
+  }
+
+  function addModule() {
+    setModules((prev) => [
+      ...prev,
+      { id: `m-${Date.now()}`, title: "新模块", duration: "15分钟", content: "" },
+    ]);
+  }
+
+  function removeModule(index: number) {
+    setModules((prev) => prev.filter((_, i) => i !== index));
+  }
+
+  function moveModule(index: number, dir: -1 | 1) {
+    const next = index + dir;
+    if (next < 0 || next >= modules.length) return;
+    setModules((prev) => {
+      const copy = [...prev];
+      [copy[index], copy[next]] = [copy[next], copy[index]];
+      return copy;
+    });
+  }
+
+  function handleSave() {
+    const fd = new FormData();
+    fd.set("courseId", String(courseId));
+    fd.set("modulesJson", JSON.stringify(modules));
+    action(fd);
+  }
+
+  return (
+    <div className="mt-3 space-y-3 rounded-md border border-[#eef0f3] p-3">
+      <p className="text-[13px] font-medium text-[#1f2329]">框架编辑（增删模块、调整顺序与内容）</p>
+      {modules.map((mod, index) => (
+        <div key={mod.id} className="rounded-md border border-[#dee0e3] bg-[#fafbfc] p-3">
+          <div className="flex flex-wrap items-center gap-2">
+            <span className="text-[12px] text-[#8f959e]">#{index + 1}</span>
+            <input
+              className={`${inputCls} min-w-[120px] flex-1`}
+              value={mod.title}
+              onChange={(e) => updateModule(index, { title: e.target.value })}
+              placeholder="模块标题"
+            />
+            <input
+              className={`${inputCls} w-24`}
+              value={mod.duration}
+              onChange={(e) => updateModule(index, { duration: e.target.value })}
+              placeholder="时长"
+            />
+            <button type="button" className="text-[12px] text-[#646a73]" onClick={() => moveModule(index, -1)}>
+              上移
+            </button>
+            <button type="button" className="text-[12px] text-[#646a73]" onClick={() => moveModule(index, 1)}>
+              下移
+            </button>
+            <button type="button" className="text-[12px] text-[#f53f3f]" onClick={() => removeModule(index)}>
+              删除
+            </button>
+          </div>
+          <textarea
+            className={`${inputCls} mt-2`}
+            rows={2}
+            value={mod.content}
+            onChange={(e) => updateModule(index, { content: e.target.value })}
+            placeholder="模块要点"
+          />
+        </div>
+      ))}
+      <div className="flex gap-2">
+        <button type="button" className={btnSecondary} onClick={addModule}>
+          添加模块
+        </button>
+        <button type="button" className={btnPrimary} onClick={handleSave}>
+          保存框架并重新生成输出物
+        </button>
+      </div>
+    </div>
+  );
+}
+
+
+### components/course-my-list.tsx
+
+import Link from "next/link";
+import { cloneCourseAction, releaseCourseAction, updateFrameworkAction } from "@/app/actions";
+import type { CourseDetailRow, CourseOutputRow } from "@/lib/courses-workspace";
+import { parseModulesJson } from "@/lib/framework";
+import { getKnowledgeGapsForCourse } from "@/lib/knowledge-gap";
+import { parseSectionSources } from "@/lib/output-sources";
+import type { CourseSummary } from "@/lib/types";
+import { formatCourseStatus, formatScope, formatSourceKind } from "@/lib/display-labels";
+import { btnPrimary } from "@/components/app-panel";
+import { CourseFrameworkEditor } from "@/components/course-framework-editor";
+
+export function CourseMyList({
+  courses,
+  detailMap,
+  outputMap,
+  canEdit,
+}: {
+  courses: CourseSummary[];
+  detailMap: Map<number, CourseDetailRow>;
+  outputMap: Map<number, CourseOutputRow>;
+  canEdit: boolean;
+}) {
+  if (courses.length === 0) {
+    return (
+      <p className="text-[13px] text-[#8f959e]">
+        暂无课程，请先在
+        <Link href="/courses/design" className="mx-1 text-[#3370ff]">
+          发起设计
+        </Link>
+        创建。
+      </p>
+    );
+  }
+
+  return (
+    <div className="space-y-4">
+      {courses.map((course) => {
+        const detail = detailMap.get(course.id);
+        const output = outputMap.get(course.id);
+        const modules = detail ? parseModulesJson(detail.framework_modules, detail.framework) : [];
+        const gaps =
+          detail && output
+            ? getKnowledgeGapsForCourse(
+                course.id,
+                detail.scope,
+                detail.framework,
+                detail.framework_modules,
+                detail.core_problem,
+              )
+            : [];
+
+        return (
+          <div key={course.id} className="rounded-md border border-[#eef0f3] p-4">
+            <div className="flex flex-wrap items-start justify-between gap-2">
+              <div>
+                <h3 className="text-[14px] font-medium text-[#1f2329]">
+                  #{course.id} {course.title}
+                </h3>
+                <p className="mt-1 text-[12px] text-[#8f959e]">
+                  {course.courseType} · {course.learnerType} · v{course.version} ·{" "}
+                  <span
+                    className={
+                      detail?.status === "RELEASED"
+                        ? "text-[#00b42a]"
+                        : detail?.status === "BLOCKED"
+                          ? "text-[#ff7d00]"
+                          : ""
+                    }
+                  >
+                    {formatCourseStatus(detail?.status ?? course.status)}
+                  </span>
+                </p>
+              </div>
+              <div className="flex gap-2">
+                <span className="rounded bg-[#edf3ff] px-2 py-0.5 text-[11px] text-[#3370ff]">{formatScope(course.scope)}</span>
+                {canEdit ? (
+                  <form action={cloneCourseAction}>
+                    <input type="hidden" name="courseId" value={course.id} />
+                    <button type="submit" className="text-[12px] text-[#3370ff]">
+                      基于旧版迭代
+                    </button>
+                  </form>
+                ) : null}
+              </div>
+            </div>
+
+            {canEdit && detail ? (
+              <CourseFrameworkEditor courseId={course.id} initialModules={modules} action={updateFrameworkAction} />
+            ) : detail ? (
+              <details className="mt-3">
+                <summary className="cursor-pointer text-[13px] text-[#3370ff]">查看课程框架</summary>
+                <pre className="mt-2 whitespace-pre-wrap rounded-md bg-[#fafbfc] p-3 text-[12px] text-[#646a73]">
+                  {detail.framework}
+                </pre>
+              </details>
+            ) : null}
+
+            {gaps.length > 0 ? (
+              <div className="mt-3 rounded-md border border-[#ffe7ba] bg-[#fffbe6] p-3">
+                <p className="text-[12px] font-medium text-[#ad6800]">知识缺口提示</p>
+                <ul className="mt-1 space-y-1 text-[11px] text-[#ad6800]">
+                  {gaps.map((g) => (
+                    <li key={g.label + g.reason}>
+                      [{g.type}] {g.reason}
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            ) : null}
+
+            {output ? (
+              <>
+                {output.section_sources ? (
+                  <details className="mt-3">
+                    <summary className="cursor-pointer text-[12px] text-[#3370ff]">分段来源追溯</summary>
+                    <div className="mt-2 space-y-1">
+                      {parseSectionSources(output.section_sources)
+                        .slice(0, 12)
+                        .map((s, i) => (
+                          <div key={i} className="flex justify-between text-[11px] text-[#646a73]">
+                            <span>
+                              {s.deliverable} · {s.section}
+                            </span>
+                            <span>
+                              {formatSourceKind(s.source_kind)} — {s.note}
+                            </span>
+                          </div>
+                        ))}
+                    </div>
+                  </details>
+                ) : null}
+
+                {detail?.status !== "RELEASED" ? (
+                  <div className="mt-3 rounded-md border border-[#ffccc7] bg-[#fff2f0] p-3 text-[12px] text-[#cf1322]">
+                    <p className="font-medium">发布前风险提示</p>
+                    <p className="mt-1">{output.risk_notice}</p>
+                    {canEdit ? (
+                      <form action={releaseCourseAction} className="mt-2 flex flex-wrap items-center gap-3">
+                        <input type="hidden" name="courseId" value={course.id} />
+                        {gaps.length > 0 ? (
+                          <label className="flex items-center gap-1 text-[11px] text-[#646a73]">
+                            <input type="checkbox" name="acknowledgeRisk" value="1" />
+                            已知晓风险，仍要发布
+                          </label>
+                        ) : null}
+                        <button type="submit" className={btnPrimary}>
+                          确认发布交付
+                        </button>
+                      </form>
+                    ) : null}
+                  </div>
+                ) : null}
+
+                <div className="mt-3 grid gap-2 lg:grid-cols-3">
+                  {[
+                    { label: "课程大纲", content: output.outline, type: "outline" as const },
+                    { label: "练习册", content: output.workbook, type: "workbook" as const },
+                    { label: "课件包", content: output.deck_package, type: "deck" as const },
+                  ].map((item) => (
+                    <div key={item.label} className="rounded-md border border-[#eef0f3] p-2">
+                      <div className="flex items-center justify-between">
+                        <span className="text-[12px] font-medium text-[#1f2329]">{item.label}</span>
+                        {detail?.status === "RELEASED" ? (
+                          <a
+                            href={`/api/courses/${course.id}/download?type=${item.type}`}
+                            className="text-[11px] text-[#3370ff]"
+                          >
+                            下载
+                          </a>
+                        ) : (
+                          <span className="text-[11px] text-[#8f959e]">发布后可下载</span>
+                        )}
+                      </div>
+                      <pre className="mt-2 max-h-32 overflow-y-auto whitespace-pre-wrap text-[11px] text-[#646a73]">
+                        {item.content}
+                      </pre>
+                    </div>
+                  ))}
+                </div>
+                <p className="mt-2 text-[11px] text-[#8f959e]">
+                  整体来源：{formatSourceKind(output.source_kind)} · {output.risk_notice}
+                </p>
+              </>
+            ) : null}
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
+
+### components/dashboard-bento.tsx
+
+import Link from "next/link";
+import {
+  ArrowRight,
+  BarChart3,
+  BookOpen,
+  ChevronRight,
+  MessageSquareText,
+  Share2,
+  Sparkles,
+} from "lucide-react";
+import type { UserRole } from "@/lib/types";
+import { cn } from "@/lib/utils";
+
+interface DashboardBentoProps {
+  userName: string;
+  userRole: UserRole;
+  stats: {
+    courses: number;
+    knowledge: number;
+    feedbacks: number;
+    reports: number;
+    pendingKnowledge: number;
+    pendingFeedback: number;
+    activeRate: number;
+    opcPoints: number;
+  };
+  scoreTrend: Array<{
+    courseId: number;
+    title: string;
+    avgScore: number;
+    feedbackCount: number;
+    meetsThreshold: boolean;
+  }>;
+  minFeedbackForTrend?: number;
+  canAdmin: boolean;
+}
+
+const cardBase =
+  "rounded-lg border border-[#dee0e3] bg-white p-5 shadow-[0_1px_2px_rgba(31,35,41,0.04)] transition-shadow hover:shadow-[0_4px_12px_rgba(31,35,41,0.06)]";
+
+const roleLabel: Record<UserRole, string> = {
+  INTERNAL: "内部讲师",
+  OPC: "合作讲师",
+  MANAGER: "培训负责人",
+  ADMIN: "平台管理员",
+};
+
+function courseJourneySteps(stats: DashboardBentoProps["stats"]) {
+  return [
+    {
+      step: 1,
+      title: "先把课搭起来",
+      desc: "选好课型、学员和问题，半小时左右能出一版能讲的方案",
+      href: "/courses/design",
+      icon: Sparkles,
+      metric: stats.courses > 0 ? `已有 ${stats.courses} 门` : "还没开课",
+      iconBg: "bg-[#edf3ff]",
+      iconColor: "text-[#3370ff]",
+      badge: "bg-[#edf3ff] text-[#3370ff]",
+    },
+    {
+      step: 2,
+      title: "翻翻知识库",
+      desc: "找现成的模块、案例和讲课小技巧，少从零写起",
+      href: "/knowledge/search",
+      icon: BookOpen,
+      metric: `${stats.knowledge} 条可用`,
+      iconBg: "bg-[#e6fffb]",
+      iconColor: "text-[#00b8a9]",
+      badge: "bg-[#e6fffb] text-[#00b8a9]",
+    },
+    {
+      step: 3,
+      title: "收学员反馈",
+      desc: "发问卷或记下课后评价，学员说了什么都会留下来",
+      href: "/feedback/survey",
+      icon: MessageSquareText,
+      metric: stats.feedbacks > 0 ? `收到 ${stats.feedbacks} 条` : "还没收到",
+      iconBg: "bg-[#fff7e6]",
+      iconColor: "text-[#fa8c16]",
+      badge: "bg-[#fff7e6] text-[#fa8c16]",
+    },
+    {
+      step: 4,
+      title: "看看课讲得怎样",
+      desc: "哪门课分高、哪个模块要改，一眼能看出来",
+      href: "/feedback/analysis",
+      icon: BarChart3,
+      metric: stats.feedbacks > 0 ? "可以看" : "先多收反馈",
+      iconBg: "bg-[#f9f0ff]",
+      iconColor: "text-[#722ed1]",
+      badge: "bg-[#f9f0ff] text-[#722ed1]",
+    },
+    {
+      step: 5,
+      title: "写报告、对外讲",
+      desc: "整理成质量报告，需要时生成链接给企业看",
+      href: "/reports/analysis",
+      icon: Share2,
+      metric: stats.reports > 0 ? `${stats.reports} 份报告` : "还没生成",
+      iconBg: "bg-[#f0f5ff]",
+      iconColor: "text-[#597ef7]",
+      badge: "bg-[#f0f5ff] text-[#597ef7]",
+    },
+  ];
+}
+
+const bentoShortcuts = [
+  { label: "我的课程", href: "/courses/my", color: "bg-[#3370ff]" },
+  { label: "新增知识", href: "/knowledge/new", color: "bg-[#13c2c2]" },
+  { label: "录入反馈", href: "/feedback/collect", color: "bg-[#fa8c16]" },
+  { label: "反馈列表", href: "/feedback/list", color: "bg-[#eb2f96]" },
+  { label: "版本对比", href: "/courses/versions", color: "bg-[#52c41a]" },
+  { label: "管理后台", href: "/admin", color: "bg-[#597ef7]", adminOnly: true },
+  { label: "OPC 积分", href: "/opc", color: "bg-[#26a69a]", opcOnly: true },
+];
+
+export function DashboardBento({
+  userName,
+  userRole,
+  stats,
+  scoreTrend,
+  canAdmin,
+  minFeedbackForTrend = 3,
+}: DashboardBentoProps) {
+  const steps = courseJourneySteps(stats);
+  const shortcuts = bentoShortcuts.filter((e) => {
+    if (e.adminOnly && !canAdmin) return false;
+    if (e.opcOnly && userRole !== "OPC" && userRole !== "ADMIN") return false;
+    return true;
+  });
+
+  const hasPending = (stats.pendingKnowledge > 0 || stats.pendingFeedback > 0) && canAdmin;
+
+  return (
+    <div className="space-y-4">
+      {/* 一课怎么走完全程 */}
+      <section className={cardBase}>
+        <div className="flex flex-wrap items-end justify-between gap-3">
+          <div>
+            <p className="text-[13px] text-[#646a73]">从备课到复盘，平常就是这么几步</p>
+            <h1 className="mt-1 text-[20px] font-semibold text-[#1f2329]">
+              {userName}，欢迎回来
+              <span className="ml-2 text-[14px] font-normal text-[#8f959e]">· {roleLabel[userRole]}</span>
+            </h1>
+            <p className="mt-2 max-w-2xl text-[14px] leading-relaxed text-[#646a73]">
+              不用记菜单在哪：先搭课、再查资料、收反馈、看评分、必要时出报告。点下面任意一块，就能进到对应页面。
+            </p>
+          </div>
+          <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-[#3370ff] text-lg font-bold text-white">
+            课
+          </div>
+        </div>
+
+        <div className="mt-6 overflow-x-auto pb-1">
+          <div className="flex min-w-[720px] items-stretch gap-0">
+            {steps.map((item, idx) => {
+              const Icon = item.icon;
+              const isLast = idx === steps.length - 1;
+              return (
+                <div key={item.step} className="flex flex-1 items-stretch">
+                  <Link
+                    href={item.href}
+                    className="group flex flex-1 flex-col rounded-lg border border-[#eef0f3] bg-[#fafbfc] p-4 transition-colors hover:border-[#3370ff]/40 hover:bg-white"
+                  >
+                    <div className="flex items-center justify-between">
+                      <span className="text-[11px] font-medium text-[#8f959e]">第 {item.step} 步</span>
+                      <span className={cn("rounded px-1.5 py-0.5 text-[11px] font-medium", item.badge)}>
+                        {item.metric}
+                      </span>
+                    </div>
+                    <div className={cn("mt-3 flex h-10 w-10 items-center justify-center rounded-lg", item.iconBg)}>
+                      <Icon className={cn("h-5 w-5", item.iconColor)} strokeWidth={1.5} />
+                    </div>
+                    <h2 className="mt-3 text-[15px] font-medium text-[#1f2329] group-hover:text-[#3370ff]">
+                      {item.title}
+                    </h2>
+                    <p className="mt-1 flex-1 text-[12px] leading-relaxed text-[#8f959e]">{item.desc}</p>
+                    <span className="mt-3 inline-flex items-center gap-0.5 text-[12px] text-[#3370ff] opacity-0 transition-opacity group-hover:opacity-100">
+                      点这里开始
+                      <ArrowRight className="h-3.5 w-3.5" />
+                    </span>
+                  </Link>
+                  {!isLast ? (
+                    <div className="flex w-6 shrink-0 items-center justify-center text-[#bbbfc4]" aria-hidden>
+                      <ChevronRight className="h-5 w-5" strokeWidth={1.5} />
+                    </div>
+                  ) : null}
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      </section>
+
+      {/* 下方信息区 */}
+      <div className="grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-12">
+        <section className={cn(cardBase, "md:col-span-2 xl:col-span-5")}>
+          <h2 className="text-[15px] font-medium text-[#1f2329]">手头有多少</h2>
+          <p className="mt-1 text-[12px] text-[#8f959e]">课程、知识、反馈和报告，点数字就能进去看</p>
+          <div className="mt-4 grid grid-cols-2 gap-4">
+            {[
+              { label: "我的课程", value: stats.courses, href: "/courses/my" },
+              { label: "知识条目", value: stats.knowledge, href: "/knowledge/list" },
+              { label: "学员反馈", value: stats.feedbacks, href: "/feedback/list" },
+              { label: "分析报告", value: stats.reports, href: "/reports/analysis" },
+            ].map((item) => (
+              <Link
+                key={item.label}
+                href={item.href}
+                className="rounded-lg border border-[#eef0f3] bg-[#fafbfc] px-4 py-3 transition-colors hover:border-[#3370ff]/30 hover:bg-white"
+              >
+                <div className="text-[26px] font-semibold leading-none text-[#1f2329]">{item.value}</div>
+                <div className="mt-1 text-[12px] text-[#8f959e]">{item.label}</div>
+              </Link>
+            ))}
+          </div>
+        </section>
+
+        <section className={cn(cardBase, "md:col-span-2 xl:col-span-4")}>
+          <div className="flex items-center justify-between">
+            <div>
+              <h2 className="text-[15px] font-medium text-[#1f2329]">学员打得怎么样</h2>
+              <p className="mt-0.5 text-[12px] text-[#8f959e]">反馈够多才有均分，不够会提示还差几条</p>
+            </div>
+            <Link href="/feedback/analysis" className="shrink-0 text-[12px] text-[#3370ff]">
+              看详细分析
+            </Link>
+          </div>
+          {scoreTrend.length > 0 ? (
+            <div className="mt-4 space-y-2">
+              {scoreTrend.slice(0, 4).map((t) => (
+                <div key={t.courseId} className="flex items-center justify-between gap-2 text-[13px]">
+                  <span className="truncate text-[#1f2329]">{t.title}</span>
+                  <span className="shrink-0 text-[#646a73]">
+                    {t.meetsThreshold
+                      ? `均分 ${Number(t.avgScore).toFixed(1)}`
+                      : `还差 ${Math.max(0, minFeedbackForTrend - t.feedbackCount)} 条反馈`}
+                  </span>
+                </div>
+              ))}
+            </div>
+          ) : (
+            <p className="mt-4 text-[13px] leading-relaxed text-[#8f959e]">
+              还没有评分。上完课发一份问卷，学员填完就能在这里看到每门课的表现。
+            </p>
+          )}
+        </section>
+
+        {/* 待办 / OPC - 竖条 */}
+        <section className={cn(cardBase, "xl:col-span-3", !hasPending && userRole !== "OPC" && userRole !== "ADMIN" && "xl:row-span-1")}>
+          {hasPending ? (
+            <>
+              <h2 className="text-[15px] font-medium text-[#1f2329]">需要你过一眼</h2>
+              <p className="mt-1 text-[12px] text-[#8f959e]">同事提交的内容，审核通过才会进正式库</p>
+              <div className="mt-3 space-y-2">
+                {stats.pendingKnowledge > 0 ? (
+                  <Link
+                    href="/knowledge/list"
+                    className="flex justify-between rounded-md bg-[#fff7e6] px-3 py-2.5 text-[13px] text-[#ad6800]"
+                  >
+                    <span>待审的知识条目</span>
+                    <span className="font-medium">{stats.pendingKnowledge}</span>
+                  </Link>
+                ) : null}
+                {stats.pendingFeedback > 0 ? (
+                  <Link
+                    href="/feedback/list"
+                    className="flex justify-between rounded-md bg-[#fff7e6] px-3 py-2.5 text-[13px] text-[#ad6800]"
+                  >
+                    <span>待审的学员反馈</span>
+                    <span className="font-medium">{stats.pendingFeedback}</span>
+                  </Link>
+                ) : null}
+              </div>
+            </>
+          ) : (userRole === "OPC" || userRole === "ADMIN") ? (
+            <>
+              <h2 className="text-[15px] font-medium text-[#1f2329]">账户积分</h2>
+              <div className="mt-2 text-[32px] font-semibold leading-none text-[#1f2329]">{stats.opcPoints}</div>
+              <p className="mt-1 text-[12px] text-[#8f959e]">设计课程、生成报告时会按次扣减</p>
+              {stats.opcPoints < 5 ? (
+                <p className="mt-2 text-[12px] text-[#cf1322]">余额不多了，建议先充一点再用。</p>
+              ) : null}
+              <Link href="/opc" className="mt-3 inline-block text-[13px] text-[#3370ff]">
+                查看充值与消费记录
+              </Link>
+            </>
+          ) : (
+            <>
+              <h2 className="text-[15px] font-medium text-[#1f2329]">反馈收集情况</h2>
+              <div className="mt-4 space-y-3 text-[13px]">
+                <div className="flex justify-between text-[#646a73]">
+                  <span>有反馈的课程占比</span>
+                  <span className="font-medium text-[#1f2329]">{stats.activeRate.toFixed(0)}%</span>
+                </div>
+                <div className="h-1.5 overflow-hidden rounded-full bg-[#eef0f3]">
+                  <div
+                    className="h-full rounded-full bg-[#3370ff] transition-all"
+                    style={{ width: `${Math.min(100, stats.activeRate)}%` }}
+                  />
+                </div>
+                <p className="text-[12px] leading-relaxed text-[#8f959e]">多收几条课后评价，改课、续课心里更有数。</p>
+              </div>
+            </>
+          )}
+        </section>
+
+        <section className={cn(cardBase, "xl:col-span-8")}>
+          <h2 className="text-[15px] font-medium text-[#1f2329]">常用入口</h2>
+          <p className="mt-1 text-[12px] text-[#8f959e]">侧边栏里也能找，这里把最常用的摆在一起</p>
+          <div className="mt-4 grid grid-cols-3 gap-3 sm:grid-cols-4 md:grid-cols-6">
+            {shortcuts.map((entry) => (
+              <Link
+                key={entry.label}
+                href={entry.href}
+                className="group flex flex-col items-center gap-2 rounded-lg border border-transparent p-2 transition-colors hover:border-[#eef0f3] hover:bg-[#fafbfc]"
+              >
+                <div
+                  className={cn(
+                    "flex h-11 w-11 items-center justify-center rounded-xl text-[15px] font-semibold text-white shadow-sm transition-transform group-hover:scale-105",
+                    entry.color,
+                  )}
+                >
+                  {entry.label.slice(0, 1)}
+                </div>
+                <span className="text-center text-[12px] text-[#646a73]">{entry.label}</span>
+              </Link>
+            ))}
+          </div>
+        </section>
+
+        {/* 闭环提示 - 宽条 */}
+        <section
+          className={cn(
+            cardBase,
+            "flex flex-col justify-center bg-gradient-to-br from-[#edf3ff] to-white xl:col-span-4",
+          )}
+        >
+          <p className="text-[12px] font-medium text-[#3370ff]">建议你接下来</p>
+          <p className="mt-2 text-[14px] leading-relaxed text-[#1f2329]">
+            {stats.courses === 0
+              ? "还没有自己的课？先花半小时把第一节课搭出来，后面收反馈、改课都围着它转。"
+              : stats.feedbacks === 0
+                ? "课已经有了，下一步发给学员一份课后问卷，听听他们哪块没听懂。"
+                : stats.reports === 0
+                  ? "反馈攒了一些了，可以看看评分、写一份报告，方便跟企业或团队汇报。"
+                  : "该做的都做了，若要开新一版课，可以从报告里的建议改起，或把心得记进知识库。"}
+          </p>
+          <Link
+            href={
+              stats.courses === 0
+                ? "/courses/design"
+                : stats.feedbacks === 0
+                  ? "/feedback/survey"
+                  : stats.reports === 0
+                    ? "/reports/analysis"
+                    : "/courses/my"
+            }
+            className="mt-4 inline-flex w-fit items-center gap-1 rounded-md bg-[#3370ff] px-4 py-2 text-[13px] text-white hover:bg-[#2860e1]"
+          >
+            {stats.courses === 0
+              ? "去搭第一节课"
+              : stats.feedbacks === 0
+                ? "去发问卷"
+                : stats.reports === 0
+                  ? "去看分析、写报告"
+                  : "打开我的课程"}
+            <ArrowRight className="h-4 w-4" />
+          </Link>
+        </section>
+      </div>
+    </div>
+  );
+}
+
+
+### components/knowledge-item-list.tsx
+
+import { reviewKnowledgeAction } from "@/app/actions";
+import { formatKnowledgeCategory, formatSourceKind } from "@/lib/display-labels";
+import type { KnowledgeItemRow } from "@/lib/types";
+
+export function KnowledgeItemList({
+  items,
+  canReview,
+  emptyText = "无匹配条目。",
+}: {
+  items: KnowledgeItemRow[];
+  canReview: boolean;
+  emptyText?: string;
+}) {
+  if (items.length === 0) {
+    return <p className="text-[13px] text-[#8f959e]">{emptyText}</p>;
+  }
+
+  return (
+    <div className="space-y-2">
+      {items.map((row) => {
+        const isNewer = row.updated_at > row.created_at;
+        return (
+          <div key={row.id} className="rounded-md border border-[#eef0f3] p-3">
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <div className="text-[13px] font-medium text-[#1f2329]">{row.title}</div>
+              <div className="flex gap-2 text-[11px]">
+                <span className="rounded bg-[#f5f6f7] px-1.5 py-0.5 text-[#646a73]">{formatKnowledgeCategory(row.category)}</span>
+                <span className="rounded bg-[#edf3ff] px-1.5 py-0.5 text-[#3370ff]">{formatSourceKind(row.source_kind)}</span>
+                {row.review_status === "PENDING" ? (
+                  <span className="rounded bg-[#fff7e6] px-1.5 py-0.5 text-[#ad6800]">待审核</span>
+                ) : null}
+                {isNewer ? (
+                  <span className="rounded bg-[#e8ffea] px-1.5 py-0.5 text-[#00b42a]">较新版本</span>
+                ) : null}
+              </div>
+            </div>
+            <p className="mt-2 text-[12px] text-[#646a73]">{row.content}</p>
+            <p className="mt-1 text-[11px] text-[#8f959e]">
+              创建 {row.created_at} · 更新 {row.updated_at}
+            </p>
+            {canReview && row.review_status === "PENDING" ? (
+              <div className="mt-2 flex gap-3">
+                <form action={reviewKnowledgeAction}>
+                  <input type="hidden" name="id" value={String(row.id)} />
+                  <input type="hidden" name="status" value="APPROVED" />
+                  <button className="text-[13px] text-[#3370ff]" type="submit">
+                    通过
+                  </button>
+                </form>
+                <form action={reviewKnowledgeAction}>
+                  <input type="hidden" name="id" value={String(row.id)} />
+                  <input type="hidden" name="status" value="REJECTED" />
+                  <button className="text-[13px] text-[#646a73]" type="submit">
+                    驳回
+                  </button>
+                </form>
+              </div>
+            ) : null}
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
+
+### components/report-generate-form.tsx
+
+"use client";
+
+import { useState } from "react";
+import { OpcBillingConfirm } from "@/components/opc-billing-confirm";
+import { btnPrimary, inputCls } from "@/components/app-panel";
+
+interface ReportGenerateFormProps {
+  courses: Array<{ id: number; title: string }>;
+  isOpc: boolean;
+  opcPoints: number;
+  reportGenerateCost?: number;
+  minFeedbackForTrend?: number;
+  action: (formData: FormData) => void | Promise<void>;
+}
+
+export function ReportGenerateForm({
+  courses,
+  isOpc,
+  opcPoints,
+  reportGenerateCost = 3,
+  minFeedbackForTrend = 3,
+  action,
+}: ReportGenerateFormProps) {
+  const [courseId, setCourseId] = useState(courses[0]?.id ? String(courses[0].id) : "");
+
+  if (courses.length === 0) {
+    return <p className="text-[13px] text-[#8f959e]">请先创建课程。</p>;
+  }
+
+  return (
+    <div className="space-y-2">
+      <p className="text-[12px] text-[#8f959e]">
+        生成报告需至少 {minFeedbackForTrend} 条已审核反馈。
+        {isOpc ? ` OPC 按次扣费 ${reportGenerateCost} 积分。` : ""}
+      </p>
+      <div className="flex flex-wrap items-end gap-2">
+      <select
+        className={`${inputCls} min-w-[200px] flex-1`}
+        value={courseId}
+        onChange={(e) => setCourseId(e.target.value)}
+      >
+        {courses.map((course) => (
+          <option key={course.id} value={course.id}>
+            {course.id} - {course.title}
+          </option>
+        ))}
+      </select>
+      {isOpc ? (
+        <OpcBillingConfirm
+          label={`生成分析报告（扣 ${reportGenerateCost} 积分）`}
+          cost={reportGenerateCost}
+          points={opcPoints}
+          action={action}
+          formData={{ courseId }}
+        />
+      ) : (
+        <form action={action}>
+          <input type="hidden" name="courseId" value={courseId} />
+          <button type="submit" className={btnPrimary}>
+            生成分析报告
+          </button>
+        </form>
+      )}
+      </div>
+    </div>
+  );
+}
+
+
+### components/report-list.tsx
+
+import Link from "next/link";
+import { cloneCourseAction, createShareAction } from "@/app/actions";
+import { parseIterationActions } from "@/lib/iteration-actions";
+
+type ReportRow = {
+  id: number;
+  course_id: number;
+  title: string;
+  report_text: string;
+  summary_score: number;
+  iteration_actions: string | null;
+  created_at: string;
+};
+
+export function ReportList({
+  reports,
+  canShare,
+  canClone,
+}: {
+  reports: ReportRow[];
+  canShare: boolean;
+  canClone: boolean;
+}) {
+  if (reports.length === 0) {
+    return <p className="text-[13px] text-[#8f959e]">暂无报告，请先选择课程并生成。</p>;
+  }
+
+  return (
+    <div className="space-y-3">
+      {reports.map((row) => {
+        const actions = parseIterationActions(row.iteration_actions);
+        return (
+          <div key={row.id} className="rounded-md border border-[#eef0f3] p-4">
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <h3 className="text-[14px] font-medium text-[#1f2329]">
+                报告 #{row.id} · {row.title}
+              </h3>
+              <span className="text-[13px] text-[#3370ff]">综合评分 {Number(row.summary_score).toFixed(2)}</span>
+            </div>
+            <p className="mt-1 text-[11px] text-[#8f959e]">课程 #{row.course_id} · {row.created_at}</p>
+            {actions.length > 0 ? (
+              <div className="mt-3 rounded-md border border-[#e8f3ff] bg-[#fafbfc] p-3">
+                <p className="text-[12px] font-medium text-[#3370ff]">迭代优化建议</p>
+                <ul className="mt-2 space-y-1 text-[12px] text-[#646a73]">
+                  {actions.map((a, i) => (
+                    <li key={i}>
+                      <span className={a.priority === "high" ? "text-[#ff7d00]" : "text-[#8f959e]"}>[{a.priority}]</span>{" "}
+                      {a.module}：{a.action}
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            ) : null}
+            <details className="mt-2">
+              <summary className="cursor-pointer text-[13px] text-[#3370ff]">查看完整报告正文</summary>
+              <pre className="mt-2 whitespace-pre-wrap rounded-md bg-[#fafbfc] p-3 text-[12px] text-[#646a73]">
+                {row.report_text}
+              </pre>
+            </details>
+            <div className="mt-2 flex flex-wrap gap-3">
+              {canShare ? (
+                <form action={createShareAction}>
+                  <input type="hidden" name="reportId" value={String(row.id)} />
+                  <button className="text-[13px] text-[#3370ff]" type="submit">
+                    生成分享链接
+                  </button>
+                </form>
+              ) : null}
+              <Link href="/courses/my" className="text-[13px] text-[#3370ff]">
+                编辑当前课程
+              </Link>
+              {canClone ? (
+                <form action={cloneCourseAction}>
+                  <input type="hidden" name="courseId" value={String(row.course_id)} />
+                  <button type="submit" className="text-[13px] text-[#3370ff]">
+                    基于此发起新版设计
+                  </button>
+                </form>
+              ) : null}
+            </div>
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
+
+### components/survey-form.tsx
+
+"use client";
+
+import { useState } from "react";
+import { Star } from "lucide-react";
+import { submitSurveyAction } from "@/app/actions";
+import { btnPrimary, inputCls } from "@/components/app-panel";
+import { cn } from "@/lib/utils";
+
+export function SurveyForm({
+  token,
+  moduleOptions,
+}: {
+  token: string;
+  moduleOptions: string[];
+}) {
+  const [score, setScore] = useState(5);
+  const [hoverScore, setHoverScore] = useState(0);
+
+  const displayScore = hoverScore || score;
+
+  return (
+    <form action={submitSurveyAction} className="mt-6 grid gap-4">
+      <input type="hidden" name="token" value={token} />
+      <input type="hidden" name="score" value={score} />
+
+      <label className="grid gap-1.5">
+        <span className="text-[13px] text-[#646a73]">您的称呼（可选）</span>
+        <input name="respondentLabel" className={inputCls} placeholder="如：张同学" />
+      </label>
+
+      <label className="grid gap-1.5">
+        <span className="text-[13px] text-[#646a73]">评价哪个模块</span>
+        <select name="moduleName" className={inputCls} defaultValue={moduleOptions[0]} required>
+          {moduleOptions.map((name) => (
+            <option key={name} value={name}>
+              {name}
+            </option>
+          ))}
+        </select>
+      </label>
+
+      <div className="grid gap-1.5">
+        <span className="text-[13px] text-[#646a73]">满意度评分</span>
+        <div className="flex items-center gap-1" role="radiogroup" aria-label="满意度评分">
+          {[1, 2, 3, 4, 5].map((n) => (
+            <button
+              key={n}
+              type="button"
+              className="rounded p-0.5 transition-transform hover:scale-110 focus:outline-none focus-visible:ring-2 focus-visible:ring-[#3370ff]"
+              aria-label={`${n} 星`}
+              onMouseEnter={() => setHoverScore(n)}
+              onMouseLeave={() => setHoverScore(0)}
+              onClick={() => setScore(n)}
+            >
+              <Star
+                className={cn(
+                  "h-8 w-8",
+                  n <= displayScore ? "fill-[#fadb14] text-[#fadb14]" : "fill-none text-[#dee0e3]",
+                )}
+                strokeWidth={1.5}
+              />
+            </button>
+          ))}
+          <span className="ml-2 text-[14px] text-[#646a73]">{displayScore} 分</span>
+        </div>
+      </div>
+
+      <label className="grid gap-1.5">
+        <span className="text-[13px] text-[#646a73]">反馈与建议</span>
+        <textarea name="content" className={inputCls} rows={4} placeholder="请描述您的学习体验与改进建议" required />
+      </label>
+
+      <button type="submit" className={btnPrimary}>
+        提交问卷
+      </button>
+    </form>
+  );
+}
+
+
+### components/opc-billing-confirm.tsx
+
+"use client";
+
+import { useState } from "react";
+import { btnPrimary, btnSecondary } from "@/components/app-panel";
+
+interface OpcBillingConfirmProps {
+  label: string;
+  cost: number;
+  points: number;
+  action: (formData: FormData) => void | Promise<void>;
+  formData: Record<string, string>;
+  disabled?: boolean;
+}
+
+export function OpcBillingConfirm({ label, cost, points, action, formData, disabled }: OpcBillingConfirmProps) {
+  const [open, setOpen] = useState(false);
+  const canAfford = points >= cost;
+
+  function submit() {
+    const fd = new FormData();
+    Object.entries(formData).forEach(([k, v]) => fd.set(k, v));
+    fd.set("billingConfirmed", "1");
+    action(fd);
+    setOpen(false);
+  }
+
+  return (
+    <>
+      <button
+        type="button"
+        className={btnPrimary}
+        disabled={disabled || !canAfford}
+        onClick={() => setOpen(true)}
+      >
+        {label}
+      </button>
+      {!canAfford ? (
+        <p className="mt-1 text-[12px] text-[#cf1322]">余额不足（需要 {cost} 积分，当前 {points}），请先充值。</p>
+      ) : null}
+      {open ? (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/30 p-4">
+          <div className="w-full max-w-md rounded-lg bg-white p-5 shadow-lg">
+            <h3 className="text-[15px] font-medium text-[#1f2329]">确认扣费</h3>
+            <p className="mt-2 text-[13px] text-[#646a73]">
+              本次操作将扣除 {cost} 积分（当前余额 {points}）。确认后将立即扣费，中途放弃不退还。
+            </p>
+            <div className="mt-4 flex justify-end gap-2">
+              <button type="button" className={btnSecondary} onClick={() => setOpen(false)}>
+                取消
+              </button>
+              <button type="button" className={btnPrimary} onClick={submit}>
+                我已知晓，确认
+              </button>
+            </div>
+          </div>
+        </div>
+      ) : null}
+    </>
+  );
+}
+
+
+### components/feishu-shell.tsx
+
+"use client";
+
+import Link from "next/link";
+import { usePathname } from "next/navigation";
+import { ReactNode, useEffect, useState } from "react";
+import { ChevronDown, ChevronLeft, ChevronRight } from "lucide-react";
+import { cn } from "@/lib/utils";
+import {
+  filterNavByRole,
+  getBreadcrumbs,
+  isNavGroupActive,
+  navItems,
+  type NavGroup,
+  type NavLeaf,
+} from "@/lib/nav";
+import type { TenantScope, UserRole } from "@/lib/types";
+import { UserMenu } from "@/components/user-menu";
+
+const iconStroke = 1.5;
+
+/** 飞书管理后台侧栏：14px 字号、一级 #1f2329、二级未选中 #373c43 */
+const navL1 =
+  "mb-1 flex min-h-[40px] items-center rounded-md px-3 text-[14px] leading-[22px] transition-colors";
+/** 二级与一级标题文字左对齐：px-3(12) + 图标 20 + ml-3(12) = 44px */
+const navSubIndent = "pl-[44px]";
+const navL2 =
+  `mb-0.5 flex min-h-[36px] items-center rounded-md pr-3 text-[14px] leading-[22px] transition-colors ${navSubIndent}`;
+
+interface FeishuShellProps {
+  userName: string;
+  userEmail: string;
+  userRole: UserRole;
+  userScope: TenantScope;
+  children: ReactNode;
+}
+
+function NavLeafLink({
+  item,
+  pathname,
+  collapsed,
+}: {
+  item: NavLeaf;
+  pathname: string;
+  collapsed: boolean;
+}) {
+  const Icon = item.icon;
+  const isActive = pathname === item.href || pathname.startsWith(`${item.href}/`);
+
+  return (
+    <Link
+      href={item.href}
+      title={item.label}
+      className={cn(
+        navL1,
+        isActive
+          ? "bg-white font-medium text-[#1f2329] shadow-[0_1px_2px_rgba(31,35,41,0.04)]"
+          : "font-normal text-[#1f2329] hover:bg-white/80",
+      )}
+    >
+      <Icon className="h-5 w-5 shrink-0 text-[#1f2329]" strokeWidth={iconStroke} />
+      {!collapsed ? <span className="ml-3 truncate">{item.label}</span> : null}
+    </Link>
+  );
+}
+
+function NavGroupSection({
+  group,
+  pathname,
+  collapsed,
+  expanded,
+  onToggle,
+}: {
+  group: NavGroup;
+  pathname: string;
+  collapsed: boolean;
+  expanded: boolean;
+  onToggle: () => void;
+}) {
+  const Icon = group.icon;
+  const groupActive = isNavGroupActive(pathname, group);
+
+  return (
+    <div className="mb-1">
+      <button
+        type="button"
+        title={group.label}
+        onClick={onToggle}
+        className={cn(
+          navL1,
+          "w-full",
+          groupActive
+            ? "bg-white font-medium text-[#1f2329] shadow-[0_1px_2px_rgba(31,35,41,0.04)]"
+            : "font-normal text-[#1f2329] hover:bg-white/80",
+        )}
+      >
+        <Icon className="h-5 w-5 shrink-0 text-[#1f2329]" strokeWidth={iconStroke} />
+        {!collapsed ? (
+          <>
+            <span className="ml-3 flex-1 truncate text-left">{group.label}</span>
+            <ChevronDown
+              className={cn(
+                "h-4 w-4 shrink-0 text-[#646a73] transition-transform duration-200",
+                expanded ? "rotate-180" : "",
+              )}
+              strokeWidth={iconStroke}
+            />
+          </>
+        ) : null}
+      </button>
+
+      {!collapsed && expanded ? (
+        <div className="mt-1 space-y-0.5">
+          {group.children.map((child) => {
+            const isActive = pathname === child.href || pathname.startsWith(`${child.href}/`);
+            return (
+              <Link
+                key={child.href}
+                href={child.href}
+                className={cn(
+                  navL2,
+                  isActive
+                    ? "font-medium text-[#3370ff]"
+                    : "font-normal text-[#373c43] hover:bg-white/60 hover:text-[#1f2329]",
+                )}
+              >
+                {child.label}
+              </Link>
+            );
+          })}
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
+export function FeishuShell({ userName, userEmail, userRole, userScope, children }: FeishuShellProps) {
+  const pathname = usePathname();
+  const [collapsed, setCollapsed] = useState(false);
+  const [expandedGroups, setExpandedGroups] = useState<Record<string, boolean>>({
+    knowledge: true,
+    courses: true,
+    feedback: true,
+    reports: true,
+  });
+  const breadcrumbs = getBreadcrumbs(pathname);
+  const items = filterNavByRole(userRole);
+
+  useEffect(() => {
+    for (const entry of navItems) {
+      if (entry.type === "group" && isNavGroupActive(pathname, entry)) {
+        setExpandedGroups((prev) => ({ ...prev, [entry.id]: true }));
+      }
+    }
+  }, [pathname]);
+
+  function toggleGroup(id: string) {
+    setExpandedGroups((prev) => ({ ...prev, [id]: !prev[id] }));
+  }
+
+  return (
+    <div className="flex min-h-screen flex-col bg-[#f5f6f7] text-[#1f2329]">
+      <header className="sticky top-0 z-50 h-14 shrink-0 border-b border-[#dee0e3] bg-white">
+        <div className="flex h-full items-center px-5">
+          <Link href="/dashboard" className="flex items-center gap-2.5">
+            <div className="flex h-7 w-7 items-center justify-center rounded-md bg-[#3370ff] text-xs font-bold text-white">
+              课
+            </div>
+            <span className="text-[15px] font-semibold tracking-tight text-[#1f2329]">课研魔方</span>
+          </Link>
+
+          <div className="ml-auto">
+            <UserMenu userName={userName} userEmail={userEmail} userRole={userRole} userScope={userScope} />
+          </div>
+        </div>
+      </header>
+
+      <div className="flex min-h-0 flex-1">
+        <aside
+          className={cn(
+            "sticky top-14 flex h-[calc(100vh-56px)] shrink-0 flex-col border-r border-[#dee0e3] bg-[#f5f6f7] transition-all duration-200",
+            collapsed ? "w-[56px]" : "w-[232px]",
+          )}
+        >
+          <nav className="flex-1 overflow-y-auto px-2 py-4">
+            {items.map((entry) => {
+              if (entry.type === "leaf") {
+                return <NavLeafLink key={entry.href} item={entry} pathname={pathname} collapsed={collapsed} />;
+              }
+              return (
+                <NavGroupSection
+                  key={entry.id}
+                  group={entry}
+                  pathname={pathname}
+                  collapsed={collapsed}
+                  expanded={expandedGroups[entry.id] ?? false}
+                  onToggle={() => {
+                    if (collapsed) {
+                      setCollapsed(false);
+                      setExpandedGroups((prev) => ({ ...prev, [entry.id]: true }));
+                      return;
+                    }
+                    toggleGroup(entry.id);
+                  }}
+                />
+              );
+            })}
+          </nav>
+
+          <button
+            type="button"
+            onClick={() => setCollapsed((v) => !v)}
+            className="mx-2 mb-4 flex min-h-[36px] items-center justify-center gap-1.5 rounded-md border border-[#dee0e3] bg-white text-[14px] leading-[22px] text-[#1f2329] hover:bg-[#fafbfc]"
+          >
+            {collapsed ? (
+              <ChevronRight className="h-4 w-4" strokeWidth={iconStroke} />
+            ) : (
+              <>
+                <ChevronLeft className="h-4 w-4" strokeWidth={iconStroke} />
+                收起导航
+              </>
+            )}
+          </button>
+        </aside>
+
+        <div className="flex min-w-0 flex-1 flex-col">
+          <div className="shrink-0 bg-[#f5f6f7] px-5 pt-5 pb-3">
+            <nav aria-label="面包屑" className="flex flex-wrap items-center gap-1.5 text-[14px] leading-[22px]">
+              {breadcrumbs.map((crumb, idx) => {
+                const isLast = idx === breadcrumbs.length - 1;
+                return (
+                  <span key={`${crumb.label}-${idx}`} className="flex items-center gap-1.5">
+                    {idx > 0 ? (
+                      <ChevronRight className="h-3.5 w-3.5 text-[#bbbfc4]" aria-hidden strokeWidth={iconStroke} />
+                    ) : null}
+                    {crumb.href && !isLast ? (
+                      <Link href={crumb.href} className="text-[#646a73] hover:text-[#3370ff]">
+                        {crumb.label}
+                      </Link>
+                    ) : (
+                      <span className={isLast ? "font-medium text-[#1f2329]" : "text-[#646a73]"}>{crumb.label}</span>
+                    )}
+                  </span>
+                );
+              })}
+            </nav>
+          </div>
+
+          <main className="min-h-0 flex-1 overflow-y-auto bg-[#f5f6f7] px-5 pb-5 pt-0">{children}</main>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+
+### components/login-form.tsx
+
+"use client";
+
+import { useActionState } from "react";
+import { loginAction } from "@/app/actions";
+
+const initialState = { ok: true, message: "" };
+
+export function LoginForm() {
+  const [state, action, pending] = useActionState(loginAction, initialState);
+  return (
+    <form action={action} className="mt-6 space-y-4">
+      <label className="block text-sm">
+        邮箱
+        <input
+          name="email"
+          type="email"
+          required
+          className="mt-1 w-full rounded-lg border bg-background px-3 py-2"
+          placeholder="you@company.com"
+        />
+      </label>
+      <label className="block text-sm">
+        密码
+        <input
+          name="password"
+          type="password"
+          required
+          className="mt-1 w-full rounded-lg border bg-background px-3 py-2"
+        />
+      </label>
+      {!state.ok ? <p className="text-sm text-destructive">{state.message}</p> : null}
+      <button disabled={pending} className="w-full rounded-lg bg-primary px-4 py-2 text-primary-foreground disabled:opacity-60">
+        {pending ? "登录中..." : "登录"}
+      </button>
+    </form>
+  );
+}
+
+
+### app/share/[token]/page.tsx
+
+import Link from "next/link";
+import { getShareReport } from "@/lib/services";
+
+interface Props {
+  params: Promise<{ token: string }>;
+}
+
+export default async function SharePage(props: Props) {
+  const { token } = await props.params;
+    return (
+      <main className="mx-auto min-h-screen w-full max-w-3xl px-6 py-10">
+        <section className="rounded-2xl border bg-card p-6">
+          <h1 className="text-2xl font-semibold">课程质量分析报告</h1>
+          <p className="mt-3 text-muted-foreground">
+            本页展示对外分享报告的版式与阅读体验。正式报告链接由讲师在「报告与分享」中生成，仅授权对象可访问。
+          </p>
+          <Link href="/" className="mt-6 inline-block rounded-lg border px-3 py-2">
+            返回首页
+          </Link>
+        </section>
+      </main>
+    );
+  }
+
+  const report = getShareReport(token);
+  if (!report) {
+    return (
+      <main className="mx-auto min-h-screen w-full max-w-3xl px-6 py-10">
+        <section className="rounded-2xl border bg-card p-6">
+          <h1 className="text-2xl font-semibold">分享链接无效</h1>
+          <p className="mt-2 text-muted-foreground">该链接不存在、已失效或未被授权访问。</p>
+        </section>
+      </main>
+    );
+  }
+
+  return (
+    <main className="mx-auto min-h-screen w-full max-w-3xl px-6 py-10">
+      <section className="rounded-2xl border bg-card p-6">
+        <p className="text-sm text-muted-foreground">讲师：{report.ownerName}</p>
+        <h1 className="mt-2 text-2xl font-semibold">{report.title}</h1>
+        <p className="mt-2 text-lg text-[#3370ff]">综合评分：{Number(report.summary_score).toFixed(2)}</p>
+
+        {report.moduleSummary.length > 0 ? (
+          <div className="mt-4 rounded-lg border border-[#eef0f3] p-4">
+            <h2 className="text-[15px] font-medium text-[#1f2329]">模块反馈摘要</h2>
+            <div className="mt-2 space-y-2">
+              {report.moduleSummary.map((m) => (
+                <div key={m.module_name} className="flex justify-between text-[13px]">
+                  <span className="text-[#646a73]">{m.module_name}</span>
+                  <span className={Number(m.avg_score) < 4 ? "text-[#ff7d00]" : "text-[#00b42a]"}>
+                    {Number(m.avg_score).toFixed(1)} 分 · {m.cnt} 条反馈
+                  </span>
+                </div>
+              ))}
+            </div>
+          </div>
+        ) : null}
+
+        <details className="mt-4">
+          <summary className="cursor-pointer text-[#3370ff]">查看完整分析报告</summary>
+          <pre className="mt-3 whitespace-pre-wrap rounded-lg border bg-background p-3 text-sm">{report.report_text}</pre>
+        </details>
+      </section>
+    </main>
+  );
+}
+
+
+### app/survey/[token]/page.tsx
+
+import { getSurveyByToken, getSurveyModuleOptions } from "@/lib/services";
+import { SurveyForm } from "@/components/survey-form";
+
+interface Props {
+  params: Promise<{ token: string }>;
+  searchParams: Promise<{ thanks?: string; error?: string }>;
+}
+
+const pageShell = "mx-auto min-h-screen max-w-lg bg-white px-4 py-10";
+const cardCls = "rounded-lg border border-[#dee0e3] bg-white p-6";
+
+export default async function SurveyPage(props: Props) {
+  const { token } = await props.params;
+  const query = await props.searchParams;
+  const survey = getSurveyByToken(token);
+
+  if (query.thanks === "1") {
+    return (
+      <main className={pageShell}>
+        <section className={`${cardCls} text-center`}>
+          <h1 className="text-lg font-medium text-[#1f2329]">感谢反馈</h1>
+          <p className="mt-2 text-[13px] text-[#646a73]">您的问卷已提交，将进入审核流程。</p>
+        </section>
+      </main>
+    );
+  }
+
+  if (!survey) {
+    return (
+      <main className={pageShell}>
+        <section className={`${cardCls} text-center`}>
+          <h1 className="text-lg font-medium text-[#1f2329]">问卷已关闭或不存在</h1>
+          <p className="mt-2 text-[13px] text-[#8f959e]">请联系授课老师获取有效链接。</p>
+        </section>
+      </main>
+    );
+  }
+
+  const moduleOptions = getSurveyModuleOptions(token);
+
+  return (
+    <main className={pageShell}>
+      <section className={cardCls}>
+        <p className="text-[12px] text-[#8f959e]">课研魔方 · 课后问卷</p>
+        <h1 className="mt-1 text-[18px] font-semibold text-[#1f2329]">{survey.title}</h1>
+        {query.error ? (
+          <p className="mt-2 text-[13px] text-[#cf1322]">{query.error}</p>
+        ) : (
+          <p className="mt-2 text-[13px] text-[#646a73]">请如实填写，提交后将进入审核流程。</p>
+        )}
+
+        <SurveyForm token={token} moduleOptions={moduleOptions} />
+      </section>
+    </main>
+  );
+}
+
+
+### app/login/page.tsx
+
+import { redirect } from "next/navigation";
+import { getCurrentUser } from "@/lib/auth";
+import { LoginForm } from "@/components/login-form";
+
+export default async function LoginPage() {
+  const user = await getCurrentUser();
+  if (user) redirect("/dashboard");
+  return (
+    <main className="mx-auto flex min-h-screen w-full max-w-md items-center px-6">
+      <div className="w-full rounded-2xl border bg-card p-6 shadow-sm">
+        <h1 className="text-2xl font-semibold">登录课研魔方</h1>
+          <p className="mt-2 text-sm text-[#646a73]">
+            请使用已开通的企业账号登录。忘记密码或需要开通权限，请联系系统管理员。
+          </p>
+        <LoginForm />
+      </div>
+    </main>
+  );
+}
+
+
+### scripts/db-migrate.mjs
+
+#!/usr/bin/env node
+import fs from "node:fs";
+import path from "node:path";
+
+// @ts-expect-error Runtime module in current Node.
+import { DatabaseSync } from "node:sqlite";
+
+const root = process.cwd();
+const dbDir = path.join(root, "data");
+const dbPath = path.join(dbDir, "app.sqlite");
+const migrationsDir = path.join(root, "supabase", "migrations");
+
+fs.mkdirSync(dbDir, { recursive: true });
+const db = new DatabaseSync(dbPath);
+db.exec("create table if not exists _migrations(name text primary key, applied_at text default (datetime('now')))");
+
+const files = fs.readdirSync(migrationsDir).filter((f) => f.endsWith(".sql")).sort();
+for (const file of files) {
+  const exists = db.prepare("select 1 from _migrations where name=?").get(file);
+  if (exists) continue;
+  const sql = fs.readFileSync(path.join(migrationsDir, file), "utf8");
+  db.exec("begin;");
+  try {
+    db.exec(sql);
+    db.prepare("insert into _migrations(name) values (?)").run(file);
+    db.exec("commit;");
+    console.log(`Applied: ${file}`);
+  } catch (error) {
+    db.exec("rollback;");
+    console.error(`Migration failed: ${file}`);
+    throw error;
+  }
+}
+console.log("Migrations done.");
+

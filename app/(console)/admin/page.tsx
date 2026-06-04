@@ -9,6 +9,7 @@ import {
 } from "@/lib/services";
 import { AppPanel, btnPrimary, btnSecondary, inputCls } from "@/components/app-panel";
 import { sqlAll } from "@/lib/db";
+import { formatCourseStatus } from "@/lib/display-labels";
 
 export default async function AdminPage({
   searchParams,
@@ -96,7 +97,7 @@ export default async function AdminPage({
                     <span className="text-[#3370ff]">查看完整内容 →</span>
                   </div>
                   <p className="mt-1 text-[#646a73]">
-                    {c.status} · v{c.version} · {c.owner_name} · 反馈 {c.feedback_count} · 报告 {c.report_count} · 均分{" "}
+                    {formatCourseStatus(c.status)} · v{c.version} · {c.owner_name} · 反馈 {c.feedback_count} · 报告 {c.report_count} · 均分{" "}
                     {Number(c.avg_score).toFixed(1)}
                   </p>
                 </Link>

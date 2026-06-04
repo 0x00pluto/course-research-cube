@@ -12,5 +12,5 @@ export async function POST(req: Request) {
     trainerTips: string;
   };
   const framework = await mockLLMGenerateFramework(body);
-  return NextResponse.json({ framework, provider: "mock-llm" });
+  return NextResponse.json({ framework, provider: "课研魔方智能引擎" });
 }

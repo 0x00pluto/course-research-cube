@@ -5,6 +5,7 @@ import { parseModulesJson } from "@/lib/framework";
 import { getKnowledgeGapsForCourse } from "@/lib/knowledge-gap";
 import { parseSectionSources } from "@/lib/output-sources";
 import type { CourseSummary } from "@/lib/types";
+import { formatCourseStatus, formatScope, formatSourceKind } from "@/lib/display-labels";
 import { btnPrimary } from "@/components/app-panel";
 import { CourseFrameworkEditor } from "@/components/course-framework-editor";
 
@@ -66,12 +67,12 @@ export function CourseMyList({
                           : ""
                     }
                   >
-                    {detail?.status ?? course.status}
+                    {formatCourseStatus(detail?.status ?? course.status)}
                   </span>
                 </p>
               </div>
               <div className="flex gap-2">
-                <span className="rounded bg-[#edf3ff] px-2 py-0.5 text-[11px] text-[#3370ff]">{course.scope}</span>
+                <span className="rounded bg-[#edf3ff] px-2 py-0.5 text-[11px] text-[#3370ff]">{formatScope(course.scope)}</span>
                 {canEdit ? (
                   <form action={cloneCourseAction}>
                     <input type="hidden" name="courseId" value={course.id} />
@@ -121,7 +122,7 @@ export function CourseMyList({
                               {s.deliverable} · {s.section}
                             </span>
                             <span>
-                              {s.source_kind} — {s.note}
+                              {formatSourceKind(s.source_kind)} — {s.note}
                             </span>
                           </div>
                         ))}
@@ -177,7 +178,7 @@ export function CourseMyList({
                   ))}
                 </div>
                 <p className="mt-2 text-[11px] text-[#8f959e]">
-                  整体来源：{output.source_kind} · {output.risk_notice}
+                  整体来源：{formatSourceKind(output.source_kind)} · {output.risk_notice}
                 </p>
               </>
             ) : null}

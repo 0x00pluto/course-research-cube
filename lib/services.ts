@@ -400,7 +400,7 @@ export async function rechargeOpcPoints(user: SessionUser, amount: number) {
     const row = sqlOne<{ points: number }>("select points from users where id=?", targetId);
     if (!row) throw new Error("用户不存在");
     sqlRun("update users set points=? where id=?", row.points + amount, targetId);
-    sqlRun("insert into billing_logs(user_id,action,points_delta,note) values (?,?,?,?)", targetId, "RECHARGE", amount, `Mock 充值 ${amount} 积分`);
+    sqlRun("insert into billing_logs(user_id,action,points_delta,note) values (?,?,?,?)", targetId, "RECHARGE", amount, `在线充值 ${amount} 积分`);
   });
   revalidatePath("/opc");
   revalidatePath("/dashboard");

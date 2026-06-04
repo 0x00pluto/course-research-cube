@@ -2,6 +2,7 @@ import { rechargeAction } from "@/app/actions";
 import { requireRoles } from "@/lib/auth";
 import { getPlatformSettings, getUserPoints, listDashboardData } from "@/lib/services";
 import { AppPanel, btnPrimary, inputCls, StatCard } from "@/components/app-panel";
+import { formatBillingAction } from "@/lib/display-labels";
 
 export default async function OpcPage({
   searchParams,
@@ -36,7 +37,7 @@ export default async function OpcPage({
       ) : null}
 
       {user.role === "OPC" ? (
-        <AppPanel title="积分充值（Mock）" description="对接外部支付 Mock，演示充值流程。">
+        <AppPanel title="积分充值" description="支持在线支付，充值成功后积分即时到账。">
           <form action={rechargeAction} className="flex flex-wrap items-end gap-2">
             <select name="amount" className={inputCls} defaultValue="10">
               <option value="10">充值 10 积分</option>
@@ -69,7 +70,7 @@ export default async function OpcPage({
               return (
                 <div key={row.id} className="flex items-center justify-between rounded-md border border-[#eef0f3] px-3 py-2 text-[12px]">
                   <span className="text-[#646a73]">
-                    {row.action} · {row.note}
+                    {formatBillingAction(row.action)} · {row.note}
                   </span>
                   <span className={row.points_delta < 0 ? "text-[#f53f3f]" : "text-[#00b42a]"}>
                     {row.points_delta > 0 ? "+" : ""}

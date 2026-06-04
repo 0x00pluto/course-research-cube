@@ -210,7 +210,7 @@ export function HomeLanding({ user }: { user: SessionUser | null }) {
           <p className="mx-auto mt-3 max-w-md text-[14px] leading-relaxed text-[#646a73]">
             {user
               ? "你已在故事里。进入工作台，从下一镜开始演。"
-              : "欢迎现场体验演示环境，用故事里的五步亲自走一遍。"}
+              : "欢迎了解课研魔方，按故事里的五步亲自走一遍完整流程。"}
           </p>
           <div className="mt-6 flex flex-wrap justify-center gap-3">
             <Link
@@ -229,11 +229,6 @@ export function HomeLanding({ user }: { user: SessionUser | null }) {
               </Link>
             ) : null}
           </div>
-          {!user ? (
-            <p className="mt-4 text-[12px] text-[#8f959e]">
-              演示账号 internal@demo.local / opc@demo.local 等，密码 demo1234
-            </p>
-          ) : null}
         </section>
 
         <footer className="pb-4 text-center text-[12px] text-[#8f959e]">课研魔方 · 课程设计与质量分析平台</footer>

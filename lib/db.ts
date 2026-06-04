@@ -54,16 +54,16 @@ function seed(db: InstanceType<typeof DatabaseSync>) {
 
   db.prepare(
     "insert into users(name,email,password,role,scope,points) values (?,?,?,?,?,?)",
-  ).run("内部员工演示", "internal@demo.local", "demo1234", "INTERNAL", "INTERNAL", 0);
+  ).run("陈明", "internal@demo.local", "demo1234", "INTERNAL", "INTERNAL", 0);
   db.prepare(
     "insert into users(name,email,password,role,scope,points) values (?,?,?,?,?,?)",
-  ).run("OPC讲师演示", "opc@demo.local", "demo1234", "OPC", "OPC", 30);
+  ).run("李悦", "opc@demo.local", "demo1234", "OPC", "OPC", 30);
   db.prepare(
     "insert into users(name,email,password,role,scope,points) values (?,?,?,?,?,?)",
-  ).run("培训负责人演示", "manager@demo.local", "demo1234", "MANAGER", "INTERNAL", 0);
+  ).run("王芳", "manager@demo.local", "demo1234", "MANAGER", "INTERNAL", 0);
   db.prepare(
     "insert into users(name,email,password,role,scope,points) values (?,?,?,?,?,?)",
-  ).run("平台管理员演示", "admin@demo.local", "demo1234", "ADMIN", "INTERNAL", 0);
+  ).run("系统管理员", "admin@demo.local", "demo1234", "ADMIN", "INTERNAL", 0);
 
   const internalId = (
     db.prepare("select id from users where email = ?").get("internal@demo.local") as { id: number }
@@ -130,7 +130,7 @@ function seedOpcDemoCourse(db: InstanceType<typeof DatabaseSync>, opcId: number)
     opcId,
   );
 
-  const framework = `# OPC 企业内训框架
+  const framework = `# 企业内训课程框架
 1) 破冰与目标对齐（10分钟）
 2) 工具上手演练（40分钟）
 3) 场景案例讨论（30分钟）
@@ -148,13 +148,13 @@ function seedOpcDemoCourse(db: InstanceType<typeof DatabaseSync>, opcId: number)
   ).run(
     opcId,
     "OPC",
-    "OPC企业内训示范课",
+    "企业内训：工具上手与案例演练",
     "企业内训",
     "企业员工",
     "工具不会用，上手慢",
     "竞品课程偏理论，缺少模板实操。",
     "学员希望带走可复用模板。",
-    "演示课研魔方模板库能力。",
+    "结合模板库与实操环节，展示可复用的企业培训方法。",
     "每 20 分钟安排一次互动。",
     framework,
     modulesJson,
@@ -166,7 +166,7 @@ function seedOpcDemoCourse(db: InstanceType<typeof DatabaseSync>, opcId: number)
     "insert into course_outputs(course_id,outline,workbook,deck_package,source_kind,risk_notice) values (?,?,?,?,?,?)",
   ).run(
     courseId,
-    `课程《OPC企业内训示范课》大纲\n${framework}`,
+    `课程《企业内训：工具上手与案例演练》大纲\n${framework}`,
     "练习册\n- 练习1：工具操作步骤拆解\n- 作业：下周实践打卡",
     "课件包\n- 问题页\n- 步骤页\n- 复盘页",
     "AI_GENERATED",
@@ -192,7 +192,7 @@ function seedOpcDemoCourse(db: InstanceType<typeof DatabaseSync>, opcId: number)
   ).run(
     courseId,
     opcId,
-    "OPC 示范课质量分析报告\n综合表现良好，建议加强工具演练环节互动。",
+    "OPC 企业内训课 · 质量分析报告\n综合表现良好，建议加强工具演练环节互动。",
     3.67,
     iterationActions,
   );

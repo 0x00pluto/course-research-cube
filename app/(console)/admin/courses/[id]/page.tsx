@@ -5,6 +5,7 @@ import { parseSectionSources } from "@/lib/output-sources";
 import { parseIterationActions } from "@/lib/iteration-actions";
 import { getCourseDetailForAdmin, getPlatformSettings } from "@/lib/services";
 import { AppPanel } from "@/components/app-panel";
+import { formatCourseStatus, formatRole, formatScope, formatSourceKind } from "@/lib/display-labels";
 
 interface Props {
   params: Promise<{ id: string }>;
@@ -33,7 +34,7 @@ export default async function AdminCourseDetailPage(props: Props) {
 
       <AppPanel
         title={`课程 #${courseId} · ${String(course.title)}`}
-        description={`归属：${String(course.owner_name)}（${String(course.owner_role)}）· ${String(course.scope)} · ${String(course.status)} · v${String(course.version)}`}
+        description={`归属：${String(course.owner_name)}（${formatRole(String(course.owner_role))}）· ${formatScope(String(course.scope))} · ${formatCourseStatus(String(course.status))} · v${String(course.version)}`}
       >
         <div className="grid gap-3 md:grid-cols-2 text-[12px] text-[#646a73]">
           <p>课型：{String(course.course_type)}</p>
@@ -92,7 +93,7 @@ export default async function AdminCourseDetailPage(props: Props) {
                         {s.deliverable} · {s.section}
                       </span>
                       <span>
-                        {s.source_kind} — {s.note}
+                        {formatSourceKind(s.source_kind)} — {s.note}
                       </span>
                     </div>
                   ))}
